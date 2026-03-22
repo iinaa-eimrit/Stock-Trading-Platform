@@ -13,7 +13,8 @@ export function useWebSocket(onMessage: MessageHandler) {
     let reconnectTimer: ReturnType<typeof setTimeout>;
 
     function connect() {
-      const backendUrl = import.meta.env.VITE_API_URL;
+      const PROD_BACKEND = 'https://stock-trading-platform-backend-s5wr.onrender.com';
+      const backendUrl = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? PROD_BACKEND : '');
       let wsUrl: string;
       if (backendUrl) {
         const protocol = backendUrl.startsWith('https') ? 'wss' : 'ws';

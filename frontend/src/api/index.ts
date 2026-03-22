@@ -1,4 +1,5 @@
-const BACKEND = import.meta.env.VITE_API_URL || '';
+const PROD_BACKEND = 'https://stock-trading-platform-backend-s5wr.onrender.com';
+const BACKEND = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? PROD_BACKEND : '');
 const API = `${BACKEND}/api/v1`;
 
 function token(): string | null {
