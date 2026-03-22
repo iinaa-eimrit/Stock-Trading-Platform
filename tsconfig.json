@@ -1,0 +1,5 @@
+{
+  "extends": "./frontend/tsconfig.json",
+  "compilerOptions": {},
+  "include": ["frontend/src"]
+}
