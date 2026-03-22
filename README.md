@@ -45,7 +45,7 @@
 | **Frontend** | React 18 · Vite 5 · TypeScript |
 | **Charts** | TradingView Lightweight Charts |
 | **Auth** | JWT · bcryptjs |
-| **Deployment** | Railway (backend) · Vercel (frontend) |
+| **Deployment** | Render (backend) · Vercel (frontend) |
 
 ---
 
@@ -145,23 +145,26 @@ Connect to `ws://localhost:3001/ws` (or `wss://` in production)
 
 ## Deployment
 
-### Backend → Railway
+### Backend → Render (free)
 
-1. Go to [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub Repo** → select `Stock-Trading-Platform`
+1. Go to [render.com](https://render.com) → **New** → **Web Service** → connect your GitHub repo `Stock-Trading-Platform`
 2. **Settings:**
-   - Root Directory: `backend`
-   - Build Command: `npm install && npm run build`
-   - Start Command: `node dist/index.js`
+   - **Name**: `stock-trading-backend`
+   - **Root Directory**: `backend`
+   - **Runtime**: Node
+   - **Build Command**: `npm install && npm run build`
+   - **Start Command**: `node dist/index.js`
+   - **Instance Type**: Free
 3. **Environment Variables:**
    | Variable | Value |
    |----------|-------|
-   | `JWT_SECRET` | *(generate a random 64-char string)* |
+   | `JWT_SECRET` | *(generate a random string)* |
    | `FRONTEND_URL` | `https://your-app.vercel.app` *(add after Vercel deploy)* |
-   | `PORT` | *(Railway sets automatically)* |
-4. **Generate Domain** → Settings → Networking → Public Networking
-5. Copy the generated URL (e.g. `https://xxx.up.railway.app`)
+4. Click **Create Web Service** → copy the URL (e.g. `https://stock-trading-backend.onrender.com`)
 
-### Frontend → Vercel
+> Free tier spins down after 15 min of inactivity (~30s cold start). This is normal for a portfolio project.
+
+### Frontend → Vercel (free)
 
 1. Go to [vercel.com](https://vercel.com) → **Add New Project** → import `Stock-Trading-Platform` from GitHub
 2. **Framework Preset**: Vite
@@ -169,14 +172,15 @@ Connect to `ws://localhost:3001/ws` (or `wss://` in production)
 4. **Environment Variables:**
    | Variable | Value |
    |----------|-------|
-   | `VITE_API_URL` | `https://xxx.up.railway.app` *(your Railway backend URL)* |
+   | `VITE_API_URL` | `https://stock-trading-backend.onrender.com` *(your Render backend URL)* |
 5. Click **Deploy**
 
 > `VITE_API_URL` is injected at build time — the frontend uses it for REST API calls and WebSocket connections to the backend.
 
 ### After Both Are Live
 
-- Go back to Railway → set `FRONTEND_URL` env var to your Vercel URL (e.g. `https://your-app.vercel.app`)
+- Go back to Render → your backend service → **Environment** tab
+- Set `FRONTEND_URL` = `https://your-app.vercel.app` (your Vercel URL)
 - This enables CORS so the frontend can talk to the backend
 
 ---
@@ -222,6 +226,7 @@ Stock-Trading-Platform/
 ├── docs/
 │   └── ARCHITECTURE.md      # System design documentation
 ├── railway.json              # Railway deployment config
+├── render.yaml               # Render deployment blueprint
 ├── vercel.json               # Vercel deployment config
 └── README.md
 ```
