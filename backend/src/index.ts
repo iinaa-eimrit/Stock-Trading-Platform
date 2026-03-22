@@ -25,10 +25,21 @@ for (const cfg of MARKET_MAKER_CONFIGS) {
 const app = express();
 
 const allowedOrigins = process.env.FRONTEND_URL
-  ? [process.env.FRONTEND_URL, 'http://localhost:5173']
+  ? process.env.FRONTEND_URL.split(',').map(u => u.trim()).concat('http://localhost:5173')
   : ['http://localhost:5173'];
 
-app.use(cors({ origin: allowedOrigins, credentials: true }));
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, etc.)
+    if (!origin) return callback(null, true);
+    // Strip trailing slash for comparison
+    const normalized = origin.replace(/\/$/, '');
+    const allowed = allowedOrigins.map(o => o.replace(/\/$/, ''));
+    if (allowed.includes(normalized)) return callback(null, true);
+    callback(null, false);
+  },
+  credentials: true,
+}));
 app.use(express.json());
 
 app.use('/api/v1', authRouter);
