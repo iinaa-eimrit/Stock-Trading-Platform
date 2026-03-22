@@ -1,6 +1,5 @@
 import express from 'express';
 import cors from 'cors';
-import path from 'path';
 import { createServer } from 'http';
 import { PORT, MARKETS, MARKET_MAKER_CONFIGS } from './config';
 import { MatchingEngine } from './engine/matching-engine';
@@ -39,15 +38,6 @@ app.use('/api/v1/markets', createMarketRouter(engine, marketData));
 app.get('/api/v1/balance', authMiddleware, (req: AuthRequest, res) => {
   res.json({ success: true, data: store.getAllBalances(req.userId!) });
 });
-
-/* ─── Serve frontend in production ─── */
-if (process.env.NODE_ENV === 'production') {
-  const frontendDist = path.join(__dirname, '../../frontend/dist');
-  app.use(express.static(frontendDist));
-  app.get('*', (_req, res) => {
-    res.sendFile(path.join(frontendDist, 'index.html'));
-  });
-}
 
 /* ─── HTTP + WebSocket server ─── */
 const server = createServer(app);

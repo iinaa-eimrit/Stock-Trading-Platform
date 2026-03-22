@@ -45,7 +45,7 @@
 | **Frontend** | React 18 · Vite 5 · TypeScript |
 | **Charts** | TradingView Lightweight Charts |
 | **Auth** | JWT · bcryptjs |
-| **Deployment** | Railway |
+| **Deployment** | Railway (backend) · Vercel (frontend) |
 
 ---
 
@@ -143,42 +143,41 @@ Connect to `ws://localhost:3001/ws` (or `wss://` in production)
 
 ---
 
-## Deployment on Railway
+## Deployment
 
-This project is configured for **Railway** deployment as a monorepo.
+### Backend → Railway
 
-### Option A: Single Service (Recommended)
-
-Deploy the backend which also serves the frontend in production:
-
-1. **New Project** → **Deploy from GitHub Repo** → select `Stock-Trading-Platform`
+1. Go to [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub Repo** → select `Stock-Trading-Platform`
 2. **Settings:**
-   - Root Directory: `/` (default)
-   - Build Command: `cd frontend && npm install && npm run build && cd ../backend && npm install && npm run build`
-   - Start Command: `cd backend && NODE_ENV=production node dist/index.js`
+   - Root Directory: `backend`
+   - Build Command: `npm install && npm run build`
+   - Start Command: `node dist/index.js`
 3. **Environment Variables:**
    | Variable | Value |
    |----------|-------|
-   | `NODE_ENV` | `production` |
    | `JWT_SECRET` | *(generate a random 64-char string)* |
+   | `FRONTEND_URL` | `https://your-app.vercel.app` *(add after Vercel deploy)* |
    | `PORT` | *(Railway sets automatically)* |
 4. **Generate Domain** → Settings → Networking → Public Networking
+5. Copy the generated URL (e.g. `https://xxx.up.railway.app`)
 
-### Option B: Split Services (Frontend + Backend)
+### Frontend → Vercel
 
-**Backend service:**
-- Root Directory: `backend`
-- Build Command: `npm install && npm run build`
-- Start Command: `node dist/index.js`
-- Environment: `NODE_ENV=production`, `JWT_SECRET=<random>`
+1. Go to [vercel.com](https://vercel.com) → **Add New Project** → import `Stock-Trading-Platform` from GitHub
+2. **Framework Preset**: Vite
+3. **Root Directory**: `frontend`
+4. **Environment Variables:**
+   | Variable | Value |
+   |----------|-------|
+   | `VITE_API_URL` | `https://xxx.up.railway.app` *(your Railway backend URL)* |
+5. Click **Deploy**
 
-**Frontend service:**
-- Root Directory: `frontend`
-- Build Command: `npm install && npm run build`
-- Start Command: `npm start`
-- Environment: `VITE_API_URL=https://<your-backend-domain>.up.railway.app`
+> `VITE_API_URL` is injected at build time — the frontend uses it for REST API calls and WebSocket connections to the backend.
 
-> Frontend reads `VITE_API_URL` at build time to connect API & WebSocket to the backend.
+### After Both Are Live
+
+- Go back to Railway → set `FRONTEND_URL` env var to your Vercel URL (e.g. `https://your-app.vercel.app`)
+- This enables CORS so the frontend can talk to the backend
 
 ---
 
@@ -223,6 +222,7 @@ Stock-Trading-Platform/
 ├── docs/
 │   └── ARCHITECTURE.md      # System design documentation
 ├── railway.json              # Railway deployment config
+├── vercel.json               # Vercel deployment config
 └── README.md
 ```
 
