@@ -1,5 +1,4 @@
-const BACKEND = import.meta.env.VITE_API_URL || '';
-const API = `${BACKEND}/api/v1`;
+const API = '/api/v1';
 
 function token(): string | null {
   return localStorage.getItem('token');

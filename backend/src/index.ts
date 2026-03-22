@@ -23,13 +23,7 @@ for (const cfg of MARKET_MAKER_CONFIGS) {
 
 /* ─── Express ─── */
 const app = express();
-app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'https://stock-trading-platform-f-production.up.railway.app',
-  ],
-  credentials: true,
-}));
+app.use(cors());
 app.use(express.json());
 
 app.use('/api/v1', authRouter);
@@ -47,9 +41,9 @@ new WebSocketService(server, engine, marketData);
 /* ─── Market Maker (provides liquidity) ─── */
 const mm = new MarketMaker(engine);
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Exchange API  → http://0.0.0.0:${PORT}`);
-  console.log(`WebSocket     → ws://0.0.0.0:${PORT}/ws`);
+server.listen(PORT, () => {
+  console.log(`Exchange API  → http://localhost:${PORT}`);
+  console.log(`WebSocket     → ws://localhost:${PORT}/ws`);
 
   // Start market maker after a short delay so initial orderbook events don't flood
   setTimeout(() => {
