@@ -1,9 +1,13 @@
 <h1 align="center">Stock Trading Platform</h1>
 
 <p align="center">
-  A production-grade financial exchange with real-time orderbook, matching engine, candlestick charts, and full trading UI — built with TypeScript end-to-end.
+  <!-- TODO: Replace this placeholder with a 10-second auto-playing GIF of the platform in action -->
+  <img src="https://via.placeholder.com/800x400.png?text=Add+10-second+Live+Demo+GIF+Here+(WebSockets+streaming)" alt="Stock Trading Platform Demo" width="800" />
 </p>
 
+<p align="center">
+  A production-grade financial exchange with real-time orderbook, matching engine, candlestick charts, and full trading UI — built with TypeScript end-to-end.
+</p>
 <p align="center">
   <img src="https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
   <img src="https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React" />
@@ -185,7 +189,17 @@ Connect to `ws://localhost:3001/ws` (or `wss://` in production)
 
 ---
 
-## Architecture
+## System Architecture
+
+### Why WebSockets over Long-Polling?
+For a financial exchange, millisecond latency is critical. We utilize multiplexed WebSockets instead of REST polling because:
+1. **Reduced Overhead:** Eliminates HTTP header bloat and connection establishment latency per request.
+2. **Real-time Push:** The matching engine instantly broadcasts orderbook changes (`orderbook@market`), trades, and candlestick ticks to subscribed clients without them needing to ask.
+3. **State Syncing:** Allows the React frontend to maintain an accurate, lightweight local copy of the orderbook that updates incrementally rather than fetching the full state on every tick.
+
+### State Management & The Matching Engine
+- **In-Memory Orderbook:** The core matching engine runs entirely in-memory using highly optimized data structures (price-time priority, binary search insertion for `O(log n)` performance) to ensure microsecond order execution.
+- **Trade-offs:** While an in-memory state provides extreme speed, it requires a robust event-sourcing or write-ahead-log (WAL) architecture for fault tolerance. Currently, state persistence is handled periodically to balance durability with latency.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full system design including:
 
