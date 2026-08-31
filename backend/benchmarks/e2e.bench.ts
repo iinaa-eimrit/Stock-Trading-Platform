@@ -5,13 +5,15 @@ import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '../src/config';
 import * as os from 'os';
 
+import { query } from '../src/db/db';
+
 async function runE2E() {
-  const { app, settlementStore } = createApp();
+  const { app } = createApp();
   const server = createServer(app);
   
   // Fund u1 heavily so they don't hit INSUFFICIENT_BALANCE during the load test
-  settlementStore.deposit('u1', 'USDC', 1_000_000_000);
-  settlementStore.deposit('u1', 'ETH', 1_000_000);
+  await query(`INSERT INTO accounts (user_id, asset, available_units, locked_units) VALUES ('u1', 'USDC', 1000000000000000, 0) ON CONFLICT (user_id, asset) DO UPDATE SET available_units = 1000000000000000`);
+  await query(`INSERT INTO accounts (user_id, asset, available_units, locked_units) VALUES ('u1', 'ETH', 1000000000000000, 0) ON CONFLICT (user_id, asset) DO UPDATE SET available_units = 1000000000000000`);
 
   server.listen(0, () => {
     const port = (server.address() as any).port;
@@ -64,7 +66,7 @@ async function runE2E() {
       console.log(`Total Requests:    ${result.requests.total}`);
       console.log(`Throughput:        ${(result.requests.average || 0).toFixed(0)} req/sec`);
       console.log(`Latency p50:       ${result.latency.p50} ms`);
-      console.log(`Latency p95:       ${result.latency.p95} ms`);
+      console.log(`Latency p95:       ${(result.latency as any).p95} ms`);
       console.log(`Latency p99:       ${result.latency.p99} ms`);
       console.log(`Errors (TCP/HTTP): ${result.errors}`);
       console.log(`Non-2xx Responses: ${result.non2xx}`); // Important to verify we aren't measuring 400s

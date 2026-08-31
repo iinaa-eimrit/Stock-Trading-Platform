@@ -46,9 +46,11 @@ describe('Deterministic Replay Verification', () => {
       if (cmd.action === 'place') {
         const result = placeOrder(engineB, { ...cmd, type: 'PLACE_ORDER', orderType: (cmd as any).type } as any);
         tradesB.push(...result.trades);
-        clientToOrderIdB.set(cmd.clientOrderId, result.order.id);
+        if (result.order) {
+          clientToOrderIdB.set((cmd as any).clientOrderId, result.order.id);
+        }
       } else if (cmd.action === 'cancel') {
-        const id = clientToOrderIdB.get(cmd.clientOrderId);
+        const id = clientToOrderIdB.get((cmd as any).clientOrderId);
         if (id) cancelOrder(engineB, id);
       }
     }

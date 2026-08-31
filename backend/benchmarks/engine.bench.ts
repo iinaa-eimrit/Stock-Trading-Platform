@@ -70,7 +70,7 @@ async function runBenchmarkSuite() {
           clientOrderId: cmd.clientOrderId,
           market: cmd.market,
           side: cmd.side,
-          type: cmd.type,
+          orderType: cmd.type,
           priceTicks: cmd.priceTicks,
           quantityLots: cmd.quantityLots
         });
@@ -94,11 +94,13 @@ async function runBenchmarkSuite() {
           clientOrderId: cmd.clientOrderId,
           market: cmd.market,
           side: cmd.side,
-          type: cmd.type,
+          orderType: cmd.type,
           priceTicks: cmd.priceTicks,
           quantityLots: cmd.quantityLots
         });
-        clientToOrderId.set(cmd.clientOrderId, result.order.id);
+        if (result.order) {
+          clientToOrderId.set(cmd.clientOrderId, result.order.id);
+        }
       } else if (cmd.action === 'cancel') {
         const orderId = clientToOrderId.get(cmd.clientOrderId);
         if (orderId) {

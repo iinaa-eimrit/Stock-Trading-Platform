@@ -44,8 +44,8 @@ describe('MatchingEngine (Layer D - Property Tests)', () => {
                 priceTicks: cmd.orderType === 'market' ? 0 : cmd.priceTicks,
                 quantityLots: cmd.quantityLots,
               });
-              if (res.order.status === 'open' || res.order.status === 'partially_filled') {
-                activeOrders.push(res.order.id);
+              if (res.order!.status === 'open' || res.order!.status === 'partially_filled') {
+                activeOrders.push(res.order!.id);
               }
             } else if (cmd.type === 'cancel' && activeOrders.length > 0) {
               const idx = cmd.indexOffset % activeOrders.length;

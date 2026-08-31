@@ -62,4 +62,4 @@ console.log(`external: ${(diff.external / 1024 / 1024).toFixed(2)} MB`);
 console.log(`arrayBuffers: ${(diff.arrayBuffers / 1024 / 1024).toFixed(2)} MB`);
 
 // Hold references explicitly until process exit
-global['KEEP_ALIVE'] = { book, orders };
+(global as any).KEEP_ALIVE = { book, orders };

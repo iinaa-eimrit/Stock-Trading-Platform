@@ -47,8 +47,8 @@ const commandGenerator = fc.tuple(
   });
 
   // 20% chance to cancel, 80% to place
-  return fc.boolean({ probability: 0.2 }).chain((isCancel) => 
-    isCancel ? cancelGen : placeGen
+  return fc.integer({ min: 1, max: 5 }).chain(n =>
+    (n === 1 ? cancelGen : placeGen) as fc.Arbitrary<Command>
   );
 });
 
@@ -102,7 +102,7 @@ for (let i = 0; i < commands.length; i++) {
       }
 
     } else if (cmd.type === 'cancel') {
-      const activeOrders = arrayBook.asks.concat(arrayBook.bids);
+      const activeOrders = (arrayBook as any).asks.concat((arrayBook as any).bids);
       if (activeOrders.length > 0) {
         const targetOrder = activeOrders[cmd.orderIndexToCancel % activeOrders.length];
         arrayBook.cancelOrder(targetOrder.id);

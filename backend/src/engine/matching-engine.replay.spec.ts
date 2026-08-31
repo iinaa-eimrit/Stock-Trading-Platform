@@ -36,7 +36,7 @@ describe('MatchingEngine (Layer B - Deterministic Replay)', () => {
       // Also let's cancel one
       const cancelRes = cancelOrder(engine, 'c2'); // wait, order ID is UUID, we can't cancel by clientOrderId currently.
       // We need to look up order by clientOrderId or just cancel by the UUID we recorded.
-      const uuidToCancel = results[1].order.id;
+      const uuidToCancel = results[1].order!.id;
       cancelOrder(engine, uuidToCancel);
 
       const allTrades = results.flatMap(r => r.trades).map((t: any) => ({ ...t, timestamp: 0, buyOrderId: '', sellOrderId: '' }));

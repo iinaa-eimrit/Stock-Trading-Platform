@@ -20,7 +20,7 @@ describe('MatchingEngine (Layer A - Matching Logic)', () => {
 
     expect(res.trades).toHaveLength(1);
     expect(res.trades[0].quantityLots).toBe(10);
-    expect(res.order.status).toBe('filled');
+    expect(res.order!.status).toBe('filled');
     
     const ask = engine.getOrders().get(res.trades[0].sellOrderId);
     expect(ask?.status).toBe('filled');
@@ -32,7 +32,7 @@ describe('MatchingEngine (Layer A - Matching Logic)', () => {
 
     expect(res.trades).toHaveLength(1);
     expect(res.trades[0].quantityLots).toBe(4);
-    expect(res.order.status).toBe('filled');
+    expect(res.order!.status).toBe('filled');
 
     const ask = engine.getOrders().get(res.trades[0].sellOrderId);
     expect(ask?.status).toBe('partially_filled');
@@ -45,8 +45,8 @@ describe('MatchingEngine (Layer A - Matching Logic)', () => {
 
     expect(res.trades).toHaveLength(1);
     expect(res.trades[0].quantityLots).toBe(4);
-    expect(res.order.status).toBe('partially_filled');
-    expect(res.order.filledLots).toBe(4);
+    expect(res.order!.status).toBe('partially_filled');
+    expect(res.order!.filledLots).toBe(4);
 
     const ask = engine.getOrders().get(res.trades[0].sellOrderId);
     expect(ask?.status).toBe('filled');
@@ -67,7 +67,7 @@ describe('MatchingEngine (Layer A - Matching Logic)', () => {
     expect(res.trades[2].priceTicks).toBe(102);
     expect(res.trades[2].quantityLots).toBe(2);
 
-    expect(res.order.status).toBe('filled');
+    expect(res.order!.status).toBe('filled');
     expect(engine.getOrders().get(res.trades[2].sellOrderId)?.status).toBe('partially_filled');
   });
 
@@ -76,15 +76,15 @@ describe('MatchingEngine (Layer A - Matching Logic)', () => {
     const res = place('b1', 'buy', 'market', 0, 10, 'u2');
 
     expect(res.trades).toHaveLength(1);
-    expect(res.order.status).toBe('partially_filled');
-    expect(res.order.filledLots).toBe(5);
+    expect(res.order!.status).toBe('partially_filled');
+    expect(res.order!.filledLots).toBe(5);
   });
 
   it('handles IOC with no liquidity', () => {
     const res = place('b1', 'buy', 'ioc', 100, 10);
     expect(res.trades).toHaveLength(0);
-    expect(res.order.status).toBe('cancelled');
-    expect(res.order.filledLots).toBe(0);
+    expect(res.order!.status).toBe('cancelled');
+    expect(res.order!.filledLots).toBe(0);
   });
 
   it('handles IOC with partial liquidity', () => {
@@ -93,19 +93,19 @@ describe('MatchingEngine (Layer A - Matching Logic)', () => {
 
     expect(res.trades).toHaveLength(1);
     expect(res.trades[0].quantityLots).toBe(4);
-    expect(res.order.status).toBe('partially_filled'); // Or 'cancelled', wait, if it's partially filled, it's terminal. 
+    expect(res.order!.status).toBe('partially_filled'); // Or 'cancelled', wait, if it's partially filled, it's terminal. 
     // Wait, the state machine allows 'partially_filled' to be terminal for IOC?
     // In orderbook.ts: order.status = order.filledLots > 0 ? 'partially_filled' : 'cancelled';
-    expect(res.order.status).toBe('partially_filled');
+    expect(res.order!.status).toBe('partially_filled');
   });
 
   it('handles cancellation after partial fill', () => {
     const res1 = place('a1', 'sell', 'limit', 100, 10, 'u1');
     place('b1', 'buy', 'limit', 100, 4, 'u2');
 
-    expect(res1.order.status).toBe('partially_filled');
+    expect(res1.order!.status).toBe('partially_filled');
     
-    const cancelled = cancelOrder(engine, res1.order.id);
+    const cancelled = cancelOrder(engine, res1.order!.id);
     expect(cancelled?.status).toBe('cancelled');
     expect(cancelled?.filledLots).toBe(4);
   });
@@ -119,7 +119,7 @@ describe('MatchingEngine (Layer A - Matching Logic)', () => {
 
     // Expected: The newest order (the bid) is cancelled. The resting ask is untouched.
     expect(res.trades).toHaveLength(0);
-    expect(res.order.status).toBe('cancelled');
+    expect(res.order!.status).toBe('cancelled');
 
     const restingAsk = engine.getOrders().get(Array.from(engine.getOrders().values()).filter(o => o.userId === 'u1')[0].id);
     expect(restingAsk?.status).toBe('open');

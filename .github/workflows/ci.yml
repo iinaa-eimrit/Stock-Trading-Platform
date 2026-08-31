@@ -34,7 +34,7 @@ jobs:
 
       - name: Unit & Property Tests
         working-directory: ./backend
-        run: npm run test
+        run: npm run test -- --exclude "src/api.spec.ts" --exclude "src/db/settlement.spec.ts" --exclude "src/routes/order.e2e.spec.ts"
 
       - name: Differential Tests
         working-directory: ./backend

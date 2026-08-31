@@ -48,8 +48,8 @@ const commandGenerator = fc.tuple(
   });
 
   // 20% chance to cancel, 80% to place
-  return fc.boolean({ probability: 0.2 }).chain((isCancel) => 
-    isCancel ? cancelGen : placeGen
+  return fc.integer({ min: 1, max: 5 }).chain(n =>
+    (n === 1 ? cancelGen : placeGen) as fc.Arbitrary<Command>
   );
 });
 
