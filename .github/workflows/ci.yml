@@ -76,19 +76,19 @@ jobs:
       - name: Run Database Migrations (Fresh DB)
         working-directory: ./backend
         env:
-          DB_URL: postgres://exchange:password@localhost:5432/exchange
+          DATABASE_URL: postgres://exchange:password@localhost:5432/exchange
         run: npm run migrate
 
       - name: Run Database Migrations (Existing DB - Idempotency Test)
         working-directory: ./backend
         env:
-          DB_URL: postgres://exchange:password@localhost:5432/exchange
+          DATABASE_URL: postgres://exchange:password@localhost:5432/exchange
         run: npm run migrate
 
       - name: E2E and Hostile Integration Tests
         working-directory: ./backend
         env:
-          DB_URL: postgres://exchange:password@localhost:5432/exchange
+          DATABASE_URL: postgres://exchange:password@localhost:5432/exchange
           PORT: 3001
         run: npm run test:recovery:hostile
 
@@ -103,7 +103,7 @@ jobs:
       - name: Start Exchange API for Load Test
         working-directory: ./backend
         env:
-          DB_URL: postgres://exchange:password@localhost:5432/exchange
+          DATABASE_URL: postgres://exchange:password@localhost:5432/exchange
           PORT: 3001
         run: npm run start &
         
@@ -130,5 +130,5 @@ jobs:
       - name: Automated Reconciliation
         working-directory: ./backend
         env:
-          DB_URL: postgres://exchange:password@localhost:5432/exchange
+          DATABASE_URL: postgres://exchange:password@localhost:5432/exchange
         run: npx tsx src/recovery/reconciliation.ts
