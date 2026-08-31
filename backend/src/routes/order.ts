@@ -1,17 +1,28 @@
 import { Router, Response } from 'express';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
+import { ExchangeProcessor } from '../engine/processor';
 import { MatchingEngine } from '../engine/matching-engine';
-import { store } from '../db/store';
-import { MARKETS, MARKET_MAKER_USER_ID } from '../config';
+import { MARKETS } from '../config';
+import { parsePriceToTicks, parseQuantityToLots } from '../utils/math';
+import { ExchangeCommand } from '../events/commands';
+import { OrderAcceptedEvent } from '../events/types';
+import { logger } from '../logger';
 
-export function createOrderRouter(engine: MatchingEngine): Router {
+export function createOrderRouter(processor: ExchangeProcessor, engine: MatchingEngine): Router {
   const router = Router();
 
   /* ── Place order ── */
-  router.post('/', authMiddleware, (req: AuthRequest, res: Response) => {
+  router.post('/', authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
-      const { type, side, price, quantity, market } = req.body;
+      const { type, side, price, quantity, market, clientOrderId } = req.body;
       const userId = req.userId!;
+
+      logger.info({ clientOrderId, userId, market, side, type, quantity, price }, 'Place order request received');
+
+      if (!clientOrderId || typeof clientOrderId !== 'string') {
+        res.status(400).json({ success: false, error: 'clientOrderId required' });
+        return;
+      }
 
       if (!['limit', 'market', 'ioc'].includes(type)) {
         res.status(400).json({ success: false, error: 'Invalid order type' });
@@ -36,67 +47,84 @@ export function createOrderRouter(engine: MatchingEngine): Router {
         return;
       }
 
-      // Lock funds (skip for market maker)
-      if (userId !== MARKET_MAKER_USER_ID) {
-        if (side === 'buy') {
-          const cost =
-            type === 'market'
-              ? estimateMarketBuyCost(engine, market, quantity)
-              : price * quantity;
-          if (!store.lockFunds(userId, mkt.quoteAsset, cost)) {
-            res.status(400).json({ success: false, error: 'Insufficient balance' });
-            return;
-          }
-        } else {
-          if (!store.lockFunds(userId, mkt.baseAsset, quantity)) {
-            res.status(400).json({ success: false, error: 'Insufficient balance' });
-            return;
-          }
+      let priceTicks = 0;
+      let quantityLots = 0;
+      try {
+        quantityLots = parseQuantityToLots(quantity, mkt.lotSize);
+        if (type !== 'market') {
+          priceTicks = parsePriceToTicks(price, mkt.tickSize);
         }
+      } catch (err: any) {
+        res.status(400).json({ success: false, error: err.message });
+        return;
       }
 
-      const result = engine.placeOrder({
-        userId,
+      const cmd: ExchangeCommand = {
+        type: 'PLACE_ORDER',
+        clientOrderId,
+        userId: req.userId!,
         market,
         side,
-        type,
-        price: type === 'market' ? 0 : price,
-        quantity,
-      });
+        orderType: type,
+        priceTicks: price ? price * 1000 : 0,
+        quantityLots: quantity * 10000
+      };
 
-      // Settle trades
-      for (const t of result.trades) {
-        store.executeTrade(t.buyerId, t.sellerId, mkt.baseAsset, mkt.quoteAsset, t.price, t.quantity);
-      }
-
-      // Unlock leftover if order is fully resolved
-      if (userId !== MARKET_MAKER_USER_ID) {
-        const rem = quantity - result.order.filledQuantity;
-        if (
-          rem > 0 &&
-          (result.order.status === 'filled' || result.order.status === 'cancelled')
-        ) {
-          if (side === 'buy') {
-            store.unlockFunds(userId, mkt.quoteAsset, (type === 'market' ? 0 : price) * rem);
-          } else {
-            store.unlockFunds(userId, mkt.baseAsset, rem);
-          }
-        }
-      }
-
+      const events = await processor.submitCommand(cmd);
+      
+      const accepted = events.find(e => e.type === 'ORDER_ACCEPTED') as OrderAcceptedEvent;
+      const trades = events.filter(e => e.type === 'TRADE_EXECUTED').map((e: any) => ({
+        ...e,
+        sequenceNumber: e.sequenceNumber.toString()
+      }));
+      
       res.json({
         success: true,
         data: {
-          orderId: result.order.id,
-          status: result.order.status,
-          filledQuantity: result.order.filledQuantity,
-          trades: result.trades.map((t) => ({
-            id: t.id,
-            price: t.price,
-            quantity: t.quantity,
-            timestamp: t.timestamp,
-          })),
+          orderId: accepted?.orderId || clientOrderId,
+          status: 'processed',
+          trades: trades
         },
+      });
+    } catch (err: any) {
+      if (err.message === 'INSUFFICIENT_BALANCE' || err.message === 'Account not found') {
+        res.status(400).json({ success: false, error: err.message });
+      } else {
+        res.status(500).json({ success: false, error: err.message });
+      }
+    }
+  });
+
+  /* ── Cancel order ── */
+  router.delete('/:orderId', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const orderId = req.params.orderId;
+      // In a real implementation, we would need to know the market to cancel properly.
+      // For this API, let's assume we can derive the market or pass it in body.
+      // For now, we will require market in query params: ?market=ETH_USDC
+      const market = req.query.market as string;
+      if (!market) {
+        res.status(400).json({ success: false, error: 'market query param required for cancellation' });
+        return;
+      }
+
+      const cmd: ExchangeCommand = {
+        type: 'CANCEL_ORDER',
+        userId: req.userId!,
+        orderId,
+        market
+      };
+
+      const events = await processor.submitCommand(cmd);
+      
+      const serializedEvents = events.map((e: any) => ({
+        ...e,
+        sequenceNumber: e.sequenceNumber.toString()
+      }));
+
+      res.json({ 
+        success: true, 
+        data: serializedEvents 
       });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
@@ -105,7 +133,7 @@ export function createOrderRouter(engine: MatchingEngine): Router {
 
   /* ── Get order ── */
   router.get('/:orderId', authMiddleware, (req: AuthRequest, res: Response) => {
-    const order = engine.getOrder(req.params.orderId);
+    const order = engine.getOrders().get(req.params.orderId);
     if (!order) {
       res.status(404).json({ success: false, error: 'Order not found' });
       return;
@@ -114,36 +142,10 @@ export function createOrderRouter(engine: MatchingEngine): Router {
       res.status(403).json({ success: false, error: 'Forbidden' });
       return;
     }
-    res.json({ success: true, data: order });
-  });
-
-  /* ── Cancel order ── */
-  router.delete('/:orderId', authMiddleware, (req: AuthRequest, res: Response) => {
-    const order = engine.getOrder(req.params.orderId);
-    if (!order) {
-      res.status(404).json({ success: false, error: 'Order not found' });
-      return;
-    }
-    if (order.userId !== req.userId) {
-      res.status(403).json({ success: false, error: 'Forbidden' });
-      return;
-    }
-
-    const cancelled = engine.cancelOrder(req.params.orderId);
-    if (!cancelled) {
-      res.status(400).json({ success: false, error: 'Cannot cancel order' });
-      return;
-    }
-
-    const mkt = MARKETS.find((m) => m.symbol === order.market)!;
-    const rem = order.quantity - order.filledQuantity;
-    if (order.side === 'buy') {
-      store.unlockFunds(req.userId!, mkt.quoteAsset, order.price * rem);
-    } else {
-      store.unlockFunds(req.userId!, mkt.baseAsset, rem);
-    }
-
-    res.json({ success: true, data: cancelled });
+    res.json({ 
+      success: true, 
+      data: { ...order, sequenceNumber: order.sequenceNumber.toString() } 
+    });
   });
 
   /* ── Quote ── */
@@ -154,7 +156,21 @@ export function createOrderRouter(engine: MatchingEngine): Router {
       return;
     }
 
-    const quote = engine.getQuote(market, side, quantity);
+    const mkt = MARKETS.find((m) => m.symbol === market);
+    if (!mkt) {
+      res.status(400).json({ success: false, error: 'Invalid market' });
+      return;
+    }
+
+    let quantityLots = 0;
+    try {
+      quantityLots = parseQuantityToLots(quantity, mkt.lotSize);
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+
+    const quote = engine.getQuote(market, side as 'buy' | 'sell', quantityLots);
     if (!quote) {
       res.status(400).json({ success: false, error: 'Insufficient liquidity for quote' });
       return;
@@ -164,14 +180,10 @@ export function createOrderRouter(engine: MatchingEngine): Router {
 
   /* ── User's orders ── */
   router.get('/', authMiddleware, (req: AuthRequest, res: Response) => {
-    const orders = engine.getOrdersByUser(req.userId!);
-    res.json({ success: true, data: orders });
+    const orders = Array.from(engine.getOrders().values()).filter(o => o.userId === req.userId!);
+    const serializedOrders = orders.map(o => ({ ...o, sequenceNumber: o.sequenceNumber.toString() }));
+    res.json({ success: true, data: serializedOrders });
   });
 
   return router;
-}
-
-function estimateMarketBuyCost(engine: MatchingEngine, market: string, quantity: number): number {
-  const q = engine.getQuote(market, 'buy', quantity);
-  return q ? q.totalCost * 1.05 : 0;
 }

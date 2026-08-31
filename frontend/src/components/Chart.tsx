@@ -67,15 +67,23 @@ export default function Chart({ candles }: Props) {
   useEffect(() => {
     if (!seriesRef.current || candles.length === 0) return;
 
-    const data: CandlestickData[] = candles.map((c) => ({
-      time: (c.timestamp / 1000) as Time,
-      open: c.open,
-      high: c.high,
-      low: c.low,
-      close: c.close,
-    }));
+    const data: CandlestickData[] = candles
+      .filter((c) => c && typeof c.open === 'number' && !isNaN(c.open))
+      .map((c) => ({
+        time: (c.timestamp / 1000) as Time,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+      }))
+      .sort((a, b) => (a.time as number) - (b.time as number))
+      .filter((c, i, arr) => i === 0 || c.time !== arr[i - 1].time);
 
-    seriesRef.current.setData(data);
+    try {
+      seriesRef.current.setData(data);
+    } catch (e) {
+      console.error('Chart setData error:', e);
+    }
   }, [candles]);
 
   return <div ref={containerRef} className="chart-container" />;

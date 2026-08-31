@@ -1,0 +1,20 @@
+{
+  "node": "v24.13.0",
+  "platform": "win32",
+  "arch": "x64",
+  "cpu": "AMD Ryzen 5 3500U with Radeon Vega Mobile Gfx  ",
+  "workload": "mixed",
+  "seed": 42,
+  "orders": 10000,
+  "warmup": 1000,
+  "results": {
+    "throughput": 5251,
+    "p50": 78.4,
+    "p95": 451.8,
+    "p99": 1212.6,
+    "p99_9": 14050.5,
+    "max": 105748.8,
+    "heapUsedMB": 11.02,
+    "rssMB": 22.39
+  }
+}

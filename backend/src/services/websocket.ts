@@ -38,18 +38,18 @@ export class WebSocketService {
       ws.on('error', () => this.clients.delete(client));
     });
 
-    // Forward engine events
-    engine.on('trades', ({ market, trades }) => {
-      this.broadcast(`trades@${market}`, trades);
-    });
+    // Forward engine events (disabled in Phase 4 due to synchronous architecture)
+    // engine.on('trades', ({ market, trades }) => {
+    //   this.broadcast(`trades@${market}`, trades);
+    // });
 
-    engine.on('orderbook', ({ market, book }) => {
-      this.broadcast(`orderbook@${market}`, book);
-    });
+    // engine.on('orderbook', ({ market, book }) => {
+    //   this.broadcast(`orderbook@${market}`, book);
+    // });
 
-    engine.on('ticker', ({ market, price, timestamp }) => {
-      this.broadcast(`ticker@${market}`, { price, timestamp });
-    });
+    // engine.on('ticker', ({ market, price, timestamp }) => {
+    //   this.broadcast(`ticker@${market}`, { price, timestamp });
+    // });
 
     marketData.on('candle', ({ market, interval, candle }) => {
       this.broadcast(`candles@${market}@${interval}`, candle);

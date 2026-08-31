@@ -1,5 +1,6 @@
-import { MatchingEngine } from '../engine/matching-engine';
+import { ExchangeProcessor } from '../engine/processor';
 import { MARKET_MAKER_USER_ID, MARKET_MAKER_CONFIGS } from '../config';
+import { v4 as uuidv4 } from 'uuid';
 
 interface MMConfig {
   market: string;
@@ -11,19 +12,14 @@ interface MMConfig {
   refreshInterval: number;
 }
 
-/**
- * Simple market maker that provides liquidity by placing limit orders on both
- * sides of the current price. Periodically cancels and replaces orders, and
- * occasionally crosses the spread with a small market order to generate trades.
- */
 export class MarketMaker {
-  private engine: MatchingEngine;
+  private processor: ExchangeProcessor;
   private configs: MMConfig[];
   private orderIds = new Map<string, string[]>();
   private timers: NodeJS.Timeout[] = [];
 
-  constructor(engine: MatchingEngine) {
-    this.engine = engine;
+  constructor(processor: ExchangeProcessor) {
+    this.processor = processor;
     this.configs = MARKET_MAKER_CONFIGS;
   }
 
@@ -40,13 +36,20 @@ export class MarketMaker {
     this.timers = [];
   }
 
-  private refresh(cfg: MMConfig): void {
+  private async refresh(cfg: MMConfig): Promise<void> {
     // Cancel stale orders
     const old = this.orderIds.get(cfg.market) ?? [];
-    for (const id of old) this.engine.cancelOrder(id);
+    for (const id of old) {
+      this.processor.submitCommand({
+        type: 'CANCEL_ORDER',
+        market: cfg.market,
+        orderId: id,
+        userId: MARKET_MAKER_USER_ID,
+      }).catch(() => {});
+    }
 
-    const book = this.engine.getOrderbook(cfg.market);
-    const mid = book?.lastTradePrice ?? cfg.basePrice;
+    const book = this.processor.engine.getOrderbook(cfg.market);
+    const mid = book?.lastTradePriceTicks ?? cfg.basePrice;
     const ids: string[] = [];
 
     // Place limit bids & asks at multiple levels
@@ -56,30 +59,36 @@ export class MarketMaker {
       const qty = parseFloat((cfg.baseQuantity * (0.8 + Math.random() * 0.4)).toFixed(6));
 
       try {
-        const bid = this.engine.placeOrder({
+        const bidEvents = await this.processor.submitCommand({
+          type: 'PLACE_ORDER',
           userId: MARKET_MAKER_USER_ID,
+          clientOrderId: uuidv4(),
           market: cfg.market,
           side: 'buy',
-          type: 'limit',
-          price: parseFloat((mid * bidFactor).toFixed(2)),
-          quantity: qty,
+          orderType: 'limit',
+          priceTicks: parseFloat((mid * bidFactor).toFixed(2)),
+          quantityLots: qty,
         });
-        if (bid.order.status === 'open' || bid.order.status === 'partially_filled') {
-          ids.push(bid.order.id);
+        const bidAccept = bidEvents.find((e: any) => e.type === 'ORDER_ACCEPTED') as any;
+        if (bidAccept && (bidAccept.order.status === 'open' || bidAccept.order.status === 'partially_filled')) {
+          ids.push(bidAccept.order.id);
         }
       } catch { /* skip */ }
 
       try {
-        const ask = this.engine.placeOrder({
+        const askEvents = await this.processor.submitCommand({
+          type: 'PLACE_ORDER',
           userId: MARKET_MAKER_USER_ID,
+          clientOrderId: uuidv4(),
           market: cfg.market,
           side: 'sell',
-          type: 'limit',
-          price: parseFloat((mid * askFactor).toFixed(2)),
-          quantity: qty,
+          orderType: 'limit',
+          priceTicks: parseFloat((mid * askFactor).toFixed(2)),
+          quantityLots: qty,
         });
-        if (ask.order.status === 'open' || ask.order.status === 'partially_filled') {
-          ids.push(ask.order.id);
+        const askAccept = askEvents.find((e: any) => e.type === 'ORDER_ACCEPTED') as any;
+        if (askAccept && (askAccept.order.status === 'open' || askAccept.order.status === 'partially_filled')) {
+          ids.push(askAccept.order.id);
         }
       } catch { /* skip */ }
     }
@@ -90,13 +99,15 @@ export class MarketMaker {
       const qty = parseFloat((cfg.baseQuantity * Math.random() * 0.3).toFixed(6));
       if (qty > 0) {
         try {
-          this.engine.placeOrder({
+          await this.processor.submitCommand({
+            type: 'PLACE_ORDER',
             userId: MARKET_MAKER_USER_ID,
+            clientOrderId: uuidv4(),
             market: cfg.market,
             side,
-            type: 'market',
-            price: 0,
-            quantity: qty,
+            orderType: 'market',
+            priceTicks: 0,
+            quantityLots: qty,
           });
         } catch { /* skip */ }
       }

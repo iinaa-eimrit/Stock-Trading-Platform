@@ -1,0 +1,134 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  fast-ci:
+    name: Fast CI (Lint, Typecheck, Unit Tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./backend
+        run: npm ci || npm install
+
+      - name: Security Scan (npm audit)
+        working-directory: ./backend
+        run: npm audit --audit-level=high || true
+
+      - name: Typecheck
+        working-directory: ./backend
+        run: npm run build
+
+      - name: Unit & Property Tests
+        working-directory: ./backend
+        run: npm run test
+
+      - name: Differential Tests
+        working-directory: ./backend
+        run: npm run test:differential:stress
+
+  integration:
+    name: Integration (PostgreSQL, Migrations, API Tests)
+    runs-on: ubuntu-latest
+    needs: fast-ci
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: exchange
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: exchange
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./backend
+        run: npm ci || npm install
+
+      - name: Run Database Migrations (Fresh DB)
+        working-directory: ./backend
+        env:
+          DB_URL: postgres://exchange:password@localhost:5432/exchange
+        run: npm run migrate
+
+      - name: Run Database Migrations (Existing DB - Idempotency Test)
+        working-directory: ./backend
+        env:
+          DB_URL: postgres://exchange:password@localhost:5432/exchange
+        run: npm run migrate
+
+      - name: E2E and Hostile Integration Tests
+        working-directory: ./backend
+        env:
+          DB_URL: postgres://exchange:password@localhost:5432/exchange
+          PORT: 3001
+        run: npm run test:recovery:hostile
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: Start Exchange API for Load Test
+        working-directory: ./backend
+        env:
+          DB_URL: postgres://exchange:password@localhost:5432/exchange
+          PORT: 3001
+        run: npm run start &
+        
+      - name: Wait for API to be ready
+        run: |
+          until curl -s http://localhost:3001/health; do
+            echo "Waiting for API..."
+            sleep 2
+          done
+
+      - name: Run k6 Load Test
+        working-directory: ./backend
+        run: k6 run --summary-export=k6-summary.json load-test/load.js
+
+      - name: Archive Load Test Summary
+        uses: actions/upload-artifact@v3
+        with:
+          name: k6-benchmark-summary
+          path: backend/k6-summary.json
+
+      - name: Stop Exchange API
+        run: pkill -f "node dist/index.js" || true
+
+      - name: Automated Reconciliation
+        working-directory: ./backend
+        env:
+          DB_URL: postgres://exchange:password@localhost:5432/exchange
+        run: npx tsx src/recovery/reconciliation.ts

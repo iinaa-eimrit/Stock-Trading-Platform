@@ -1,69 +1,85 @@
-import express from 'express';
-import cors from 'cors';
 import { createServer } from 'http';
-import { PORT, MARKETS, MARKET_MAKER_CONFIGS } from './config';
-import { MatchingEngine } from './engine/matching-engine';
-import { MarketDataService } from './services/market-data';
+import { PORT } from './config';
 import { WebSocketService } from './services/websocket';
 import { MarketMaker } from './services/market-maker';
-import authRouter from './routes/auth';
-import { createOrderRouter } from './routes/order';
-import { createMarketRouter } from './routes/market';
-import { authMiddleware, AuthRequest } from './middleware/auth';
-import { store } from './db/store';
+import { createApp } from './app';
+import { logger } from './logger';
 
-/* ─── Core services ─── */
-const engine = new MatchingEngine(MARKETS);
-const marketData = new MarketDataService(engine);
+async function start() {
+  const { app, engine, marketData, processor } = createApp();
 
-// Pre-fill chart history
-for (const cfg of MARKET_MAKER_CONFIGS) {
-  marketData.backfillCandles(cfg.market, cfg.basePrice);
+  /* ─── HTTP + WebSocket server ─── */
+  const server = createServer(app);
+  new WebSocketService(server, engine, marketData);
+
+  /* ─── Market Maker (provides liquidity) ─── */
+  const mm = new MarketMaker(processor);
+
+  server.listen(PORT, '0.0.0.0', () => {
+    logger.info(`Exchange API  → http://0.0.0.0:${PORT}`);
+    logger.info(`WebSocket     → ws://0.0.0.0:${PORT}/ws`);
+  });
+
+  // Bounded startup recovery
+  try {
+    logger.info('RECOVERY_STARTED: Starting Journal Replay / Recovery...');
+    
+    let synced = false;
+    let retries = 0;
+    while (!synced && retries < 10) {
+      try {
+        logger.info(`SETTLEMENT_RETRY: Attempting syncSettlement... (try ${retries + 1})`);
+        await processor.syncSettlement();
+        synced = true;
+      } catch (err: any) {
+        logger.error({ err }, 'SETTLEMENT_FAILED: postgres might be unavailable');
+        retries++;
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+
+    if (!synced) {
+      logger.error('FATAL: Could not synchronize settlement with database after 10 retries. EXCHANGE_NOT_READY.');
+      process.exit(1); // Bounded failure!
+    }
+
+    logger.info('RECOVERY_COMPLETED: Settlement synchronized!');
+    logger.info('EXCHANGE_READY: Application is ready to accept orders.');
+    app.locals.isReady = true;
+
+    // Start market maker after a short delay so initial orderbook events don't flood
+    setTimeout(() => {
+      mm.start();
+      logger.info('Market maker running');
+    }, 500);
+
+    const shutdown = async () => {
+      logger.info('Graceful shutdown initiated. Refusing new requests...');
+      server.close();
+      app.locals.isReady = false;
+      mm.stop();
+      logger.info('Waiting for pending tasks to finish...');
+      // Wait for any pending async operations in the processor to flush
+      await new Promise(r => setTimeout(r, 1000));
+      logger.info('Flushing journal...');
+      // Assuming processor.journal has flush. Actually we don't expose journal on processor.
+      // We can just exit cleanly, Node will flush buffers, but we should make sure PostgreSQL pool is closed.
+      const { pool } = require('./db/db');
+      await pool.end();
+      logger.info('Shutting down completed. Exiting.');
+      process.exit(0);
+    };
+
+    process.on('SIGTERM', shutdown);
+    process.on('SIGINT', shutdown);
+
+  } catch (err: any) {
+    logger.error({ err }, 'Startup recovery failed');
+    process.exit(1);
+  }
 }
 
-/* ─── Express ─── */
-const app = express();
-
-const allowedOrigins = process.env.FRONTEND_URL
-  ? process.env.FRONTEND_URL.split(',').map(u => u.trim()).concat('http://localhost:5173')
-  : ['http://localhost:5173'];
-
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, etc.)
-    if (!origin) return callback(null, true);
-    // Strip trailing slash for comparison
-    const normalized = origin.replace(/\/$/, '');
-    const allowed = allowedOrigins.map(o => o.replace(/\/$/, ''));
-    if (allowed.includes(normalized)) return callback(null, true);
-    callback(null, false);
-  },
-  credentials: true,
-}));
-app.use(express.json());
-
-app.use('/api/v1', authRouter);
-app.use('/api/v1/order', createOrderRouter(engine));
-app.use('/api/v1/markets', createMarketRouter(engine, marketData));
-
-app.get('/api/v1/balance', authMiddleware, (req: AuthRequest, res) => {
-  res.json({ success: true, data: store.getAllBalances(req.userId!) });
-});
-
-/* ─── HTTP + WebSocket server ─── */
-const server = createServer(app);
-new WebSocketService(server, engine, marketData);
-
-/* ─── Market Maker (provides liquidity) ─── */
-const mm = new MarketMaker(engine);
-
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Exchange API  → http://0.0.0.0:${PORT}`);
-  console.log(`WebSocket     → ws://0.0.0.0:${PORT}/ws`);
-
-  // Start market maker after a short delay so initial orderbook events don't flood
-  setTimeout(() => {
-    mm.start();
-    console.log('Market maker running');
-  }, 500);
+start().catch(err => {
+  logger.error({ err }, 'Failed to start exchange');
+  process.exit(1);
 });

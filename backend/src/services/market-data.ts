@@ -1,6 +1,8 @@
 import { EventEmitter } from 'events';
-import { MatchingEngine } from '../engine/matching-engine';
 import { Candle, Trade } from '../engine/types';
+import { MARKETS } from '../config';
+import { ExchangeProcessor } from '../engine/processor';
+import { ExchangeEvent, TradeExecutedEvent } from '../events/types';
 
 const INTERVAL_MS: Record<string, number> = {
   '1m': 60_000,
@@ -13,16 +15,32 @@ export class MarketDataService extends EventEmitter {
   private candles = new Map<string, Map<string, Candle[]>>();
   private intervals = Object.keys(INTERVAL_MS);
 
-  constructor(engine: MatchingEngine) {
+  constructor(processor: ExchangeProcessor) {
     super();
-    for (const m of engine.getMarkets()) {
+    for (const m of MARKETS) {
       const map = new Map<string, Candle[]>();
       for (const i of this.intervals) map.set(i, []);
       this.candles.set(m.symbol, map);
     }
 
-    engine.on('trades', ({ market, trades }: { market: string; trades: Trade[] }) => {
-      for (const t of trades) this.processTrade(market, t);
+    processor.on('events', (events: ExchangeEvent[]) => {
+      for (const e of events) {
+        if (e.type === 'TRADE_EXECUTED') {
+          const te = e as TradeExecutedEvent;
+          this.processTrade(te.market, {
+            id: Number(te.tradeId),
+            buyerId: te.makerIsBuyer ? te.makerUserId : te.takerUserId,
+            sellerId: te.makerIsBuyer ? te.takerUserId : te.makerUserId,
+            buyOrderId: te.makerIsBuyer ? te.makerOrderId : te.takerOrderId,
+            sellOrderId: te.makerIsBuyer ? te.takerOrderId : te.makerOrderId,
+            priceTicks: te.priceTicks,
+            quantityLots: te.quantityLots,
+            timestamp: te.timestamp,
+            market: te.market,
+            takerSide: te.makerIsBuyer ? 'sell' : 'buy'
+          });
+        }
+      }
     });
   }
 
@@ -35,20 +53,20 @@ export class MarketDataService extends EventEmitter {
 
       const last = arr[arr.length - 1];
       if (last && last.timestamp === time) {
-        last.high = Math.max(last.high, trade.price);
-        last.low = Math.min(last.low, trade.price);
-        last.close = trade.price;
-        last.volume += trade.quantity;
+        last.highTicks = Math.max(last.highTicks, trade.priceTicks);
+        last.lowTicks = Math.min(last.lowTicks, trade.priceTicks);
+        last.closeTicks = trade.priceTicks;
+        last.volumeLots += trade.quantityLots;
         this.emit('candle', { market, interval, candle: last });
       } else {
         const c: Candle = {
           market,
           timestamp: time,
-          open: trade.price,
-          high: trade.price,
-          low: trade.price,
-          close: trade.price,
-          volume: trade.quantity,
+          openTicks: trade.priceTicks,
+          highTicks: trade.priceTicks,
+          lowTicks: trade.priceTicks,
+          closeTicks: trade.priceTicks,
+          volumeLots: trade.quantityLots,
         };
         arr.push(c);
         this.emit('candle', { market, interval, candle: c });
@@ -77,11 +95,11 @@ export class MarketDataService extends EventEmitter {
       arr.push({
         market,
         timestamp: time,
-        open: parseFloat((price + (Math.random() - 0.5) * wiggle).toFixed(2)),
-        high: parseFloat((price + Math.random() * wiggle).toFixed(2)),
-        low: parseFloat((price - Math.random() * wiggle).toFixed(2)),
-        close: parseFloat(price.toFixed(2)),
-        volume: parseFloat((Math.random() * 10 + 0.5).toFixed(4)),
+        openTicks: Math.round((price + (Math.random() - 0.5) * wiggle) * 1000),
+        highTicks: Math.round((price + Math.random() * wiggle) * 1000),
+        lowTicks: Math.round((price - Math.random() * wiggle) * 1000),
+        closeTicks: Math.round(price * 1000),
+        volumeLots: Math.round((Math.random() * 10 + 0.5) * 10000),
       });
     }
 
@@ -100,10 +118,10 @@ export class MarketDataService extends EventEmitter {
         const t = Math.floor(c.timestamp / ms) * ms;
         const g = grouped.get(t);
         if (g) {
-          g.high = Math.max(g.high, c.high);
-          g.low = Math.min(g.low, c.low);
-          g.close = c.close;
-          g.volume += c.volume;
+          g.highTicks = Math.max(g.highTicks, c.highTicks);
+          g.lowTicks = Math.min(g.lowTicks, c.lowTicks);
+          g.closeTicks = c.closeTicks;
+          g.volumeLots += c.volumeLots;
         } else {
           grouped.set(t, { ...c, timestamp: t });
         }

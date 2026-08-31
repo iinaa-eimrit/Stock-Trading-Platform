@@ -40,12 +40,13 @@ export default function OrderForm({
     setMsg(null);
     setLoading(true);
     try {
-      const params: any = { type, side, quantity: qtyNum, market };
+      const params: any = { type, side, quantity: qtyNum, market, clientOrderId: crypto.randomUUID() };
       if (type === 'limit') params.price = priceNum;
 
       const res = await api.placeOrder(params);
+      const filledLots = res.trades?.reduce((acc: number, t: any) => acc + (t.quantityLots || 0), 0) || 0;
       setMsg({
-        text: `${res.status} — ${res.filledQuantity} filled, ${res.trades.length} trade(s)`,
+        text: `${res.status} — ${res.trades?.length || 0} trade(s) executed`,
         ok: true,
       });
       setQuantity('');

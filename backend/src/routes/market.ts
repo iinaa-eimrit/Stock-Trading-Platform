@@ -6,9 +6,13 @@ export function createMarketRouter(engine: MatchingEngine, marketData: MarketDat
   const router = Router();
 
   router.get('/', (_req: Request, res: Response) => {
-    const markets = engine.getMarkets().map((m) => {
-      const book = engine.getOrderbook(m.symbol);
-      return { ...m, lastTradePrice: book?.lastTradePrice ?? null };
+    const markets = engine.getMarkets().map((m: string) => {
+      const book = engine.getOrderbook(m);
+      return {
+        id: m,
+        symbol: m.replace('_', '/'),
+        lastTradePriceTicks: book?.lastTradePriceTicks ?? null
+      };
     });
     res.json({ success: true, data: markets });
   });
@@ -24,7 +28,7 @@ export function createMarketRouter(engine: MatchingEngine, marketData: MarketDat
 
   router.get('/:market/trades', (req: Request, res: Response) => {
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 500);
-    res.json({ success: true, data: engine.getRecentTrades(req.params.market, limit) });
+    res.json({ success: true, data: engine.getRecentTrades(req.params.market) });
   });
 
   router.get('/:market/candles', (req: Request, res: Response) => {

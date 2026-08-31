@@ -36,25 +36,53 @@ export default function App() {
   /* ─── WebSocket handler ─── */
   const onWsMessage = useCallback(
     (stream: string, data: any) => {
-      if (stream === `orderbook@${market}`) setBook(data);
+      if (stream === `orderbook@${market}`) {
+        const mapLevel = (l: any) => ({
+          price: l.price ?? (l.priceTicks ? l.priceTicks / 1000 : 0),
+          quantity: l.quantity ?? (l.quantityLots ? l.quantityLots / 10000 : 0)
+        });
+        setBook({
+          bids: (data.bids || []).map(mapLevel),
+          asks: (data.asks || []).map(mapLevel),
+          lastTradePrice: data.lastTradePrice ?? (data.lastTradePriceTicks ? data.lastTradePriceTicks / 1000 : null)
+        });
+      }
       else if (stream === `trades@${market}`) {
         if (Array.isArray(data)) setTrades(data);
         else setTrades((prev) => [...prev, data].slice(-100));
       }
       else if (stream === `ticker@${market}`) setTicker(data);
-      else if (stream === `candles@${market}@1m`) {
+      else if (stream.startsWith('candles@')) {
+        const cData = {
+          ...data,
+          open: data.open ?? (data.openTicks ? data.openTicks / 1000 : 0),
+          high: data.high ?? (data.highTicks ? data.highTicks / 1000 : 0),
+          low: data.low ?? (data.lowTicks ? data.lowTicks / 1000 : 0),
+          close: data.close ?? (data.closeTicks ? data.closeTicks / 1000 : 0),
+          volume: data.volume ?? (data.volumeLots ? data.volumeLots / 10000 : 0)
+        };
         setCandles((prev) => {
-          const idx = prev.findIndex((c) => c.timestamp === data.timestamp);
+          const idx = prev.findIndex((c) => c.timestamp === cData.timestamp);
           if (idx >= 0) {
             const copy = [...prev];
-            copy[idx] = data;
+            copy[idx] = cData;
             return copy;
           }
-          return [...prev, data];
+          return [...prev, cData];
         });
       }
       else if (stream === `candles@${market}@1m:snapshot`) {
-        if (Array.isArray(data)) setCandles(data);
+        if (Array.isArray(data)) {
+          const mapped = data.map((c: any) => ({
+            ...c,
+            open: c.open ?? (c.openTicks ? c.openTicks / 1000 : 0),
+            high: c.high ?? (c.highTicks ? c.highTicks / 1000 : 0),
+            low: c.low ?? (c.lowTicks ? c.lowTicks / 1000 : 0),
+            close: c.close ?? (c.closeTicks ? c.closeTicks / 1000 : 0),
+            volume: c.volume ?? (c.volumeLots ? c.volumeLots / 10000 : 0)
+          }));
+          setCandles(mapped);
+        }
       }
     },
     [market]

@@ -5,7 +5,9 @@ import {
   AggregatedBookLevel,
   QuoteResult,
   OrderSide,
+  IOrderbook,
 } from './types';
+import { updateOrderStatus } from './state-machine';
 
 /**
  * Core Orderbook with price-time priority matching.
@@ -16,25 +18,22 @@ import {
  * Matching complexity:
  *   - Insertion: O(log n) binary search + O(n) splice (could be O(log n) with a skip list)
  *   - Top-of-book access: O(1)
- *   - Matching: O(k) where k = number of fills per order
- *   - Cancel: O(n) linear scan (could be O(log n) with an order index)
- *
- * For a production exchange, a Red-Black Tree or skip list would replace the sorted
- * array for O(log n) insertion and deletion. This implementation prioritises clarity.
+ *   - Matching: O(N) array shift (V8 splice)
+ *   - Cancel: O(n) linear scan
  */
-export class Orderbook {
+export class Orderbook implements IOrderbook {
   private bids: Order[] = [];
   private asks: Order[] = [];
   private tradeCounter: number = 0;
-  private _lastTradePrice: number | null = null;
+  private _lastTradePriceTicks: number | null = null;
   public readonly market: string;
 
   constructor(market: string) {
     this.market = market;
   }
 
-  get lastTradePrice(): number | null {
-    return this._lastTradePrice;
+  get lastTradePriceTicks(): number | null {
+    return this._lastTradePriceTicks;
   }
 
   /* ───────── Limit Order ───────── */
@@ -44,56 +43,70 @@ export class Orderbook {
 
     if (order.side === 'buy') {
       while (
-        order.filledQuantity < order.quantity &&
+        order.filledLots < order.quantityLots &&
         this.asks.length > 0 &&
-        this.asks[0].price <= order.price
+        this.asks[0].priceTicks <= order.priceTicks
       ) {
         const bestAsk = this.asks[0];
+        
+        // STP: CANCEL_NEWEST
+        if (bestAsk.userId === order.userId) {
+          updateOrderStatus(order, 'cancelled');
+          return trades;
+        }
+
         const fillQty = Math.min(
-          order.quantity - order.filledQuantity,
-          bestAsk.quantity - bestAsk.filledQuantity
+          order.quantityLots - order.filledLots,
+          bestAsk.quantityLots - bestAsk.filledLots
         );
 
         trades.push(
-          this.createTrade(order, bestAsk, bestAsk.price, fillQty, takerSide)
+          this.createTrade(order, bestAsk, bestAsk.priceTicks, fillQty, takerSide)
         );
 
-        order.filledQuantity += fillQty;
-        bestAsk.filledQuantity += fillQty;
+        order.filledLots += fillQty;
+        bestAsk.filledLots += fillQty;
 
-        if (bestAsk.filledQuantity >= bestAsk.quantity) {
-          bestAsk.status = 'filled';
+        if (bestAsk.filledLots >= bestAsk.quantityLots) {
+          updateOrderStatus(bestAsk, 'filled');
           this.asks.shift();
         } else {
-          bestAsk.status = 'partially_filled';
+          updateOrderStatus(bestAsk, 'partially_filled');
         }
       }
 
       this.finalizeOrder(order, 'buy');
     } else {
       while (
-        order.filledQuantity < order.quantity &&
+        order.filledLots < order.quantityLots &&
         this.bids.length > 0 &&
-        this.bids[0].price >= order.price
+        this.bids[0].priceTicks >= order.priceTicks
       ) {
         const bestBid = this.bids[0];
+
+        // STP: CANCEL_NEWEST
+        if (bestBid.userId === order.userId) {
+          updateOrderStatus(order, 'cancelled');
+          return trades;
+        }
+
         const fillQty = Math.min(
-          order.quantity - order.filledQuantity,
-          bestBid.quantity - bestBid.filledQuantity
+          order.quantityLots - order.filledLots,
+          bestBid.quantityLots - bestBid.filledLots
         );
 
         trades.push(
-          this.createTrade(bestBid, order, bestBid.price, fillQty, takerSide)
+          this.createTrade(bestBid, order, bestBid.priceTicks, fillQty, takerSide)
         );
 
-        order.filledQuantity += fillQty;
-        bestBid.filledQuantity += fillQty;
+        order.filledLots += fillQty;
+        bestBid.filledLots += fillQty;
 
-        if (bestBid.filledQuantity >= bestBid.quantity) {
-          bestBid.status = 'filled';
+        if (bestBid.filledLots >= bestBid.quantityLots) {
+          updateOrderStatus(bestBid, 'filled');
           this.bids.shift();
         } else {
-          bestBid.status = 'partially_filled';
+          updateOrderStatus(bestBid, 'partially_filled');
         }
       }
 
@@ -109,55 +122,69 @@ export class Orderbook {
     const trades: Trade[] = [];
 
     if (order.side === 'buy') {
-      while (order.filledQuantity < order.quantity && this.asks.length > 0) {
+      while (order.filledLots < order.quantityLots && this.asks.length > 0) {
         const bestAsk = this.asks[0];
+
+        // STP: CANCEL_NEWEST
+        if (bestAsk.userId === order.userId) {
+          updateOrderStatus(order, 'cancelled');
+          return trades;
+        }
+
         const fillQty = Math.min(
-          order.quantity - order.filledQuantity,
-          bestAsk.quantity - bestAsk.filledQuantity
+          order.quantityLots - order.filledLots,
+          bestAsk.quantityLots - bestAsk.filledLots
         );
         trades.push(
-          this.createTrade(order, bestAsk, bestAsk.price, fillQty, takerSide)
+          this.createTrade(order, bestAsk, bestAsk.priceTicks, fillQty, takerSide)
         );
 
-        order.filledQuantity += fillQty;
-        bestAsk.filledQuantity += fillQty;
+        order.filledLots += fillQty;
+        bestAsk.filledLots += fillQty;
 
-        if (bestAsk.filledQuantity >= bestAsk.quantity) {
-          bestAsk.status = 'filled';
+        if (bestAsk.filledLots >= bestAsk.quantityLots) {
+          updateOrderStatus(bestAsk, 'filled');
           this.asks.shift();
         } else {
-          bestAsk.status = 'partially_filled';
+          updateOrderStatus(bestAsk, 'partially_filled');
         }
       }
     } else {
-      while (order.filledQuantity < order.quantity && this.bids.length > 0) {
+      while (order.filledLots < order.quantityLots && this.bids.length > 0) {
         const bestBid = this.bids[0];
+
+        // STP: CANCEL_NEWEST
+        if (bestBid.userId === order.userId) {
+          updateOrderStatus(order, 'cancelled');
+          return trades;
+        }
+
         const fillQty = Math.min(
-          order.quantity - order.filledQuantity,
-          bestBid.quantity - bestBid.filledQuantity
+          order.quantityLots - order.filledLots,
+          bestBid.quantityLots - bestBid.filledLots
         );
         trades.push(
-          this.createTrade(bestBid, order, bestBid.price, fillQty, takerSide)
+          this.createTrade(bestBid, order, bestBid.priceTicks, fillQty, takerSide)
         );
 
-        order.filledQuantity += fillQty;
-        bestBid.filledQuantity += fillQty;
+        order.filledLots += fillQty;
+        bestBid.filledLots += fillQty;
 
-        if (bestBid.filledQuantity >= bestBid.quantity) {
-          bestBid.status = 'filled';
+        if (bestBid.filledLots >= bestBid.quantityLots) {
+          updateOrderStatus(bestBid, 'filled');
           this.bids.shift();
         } else {
-          bestBid.status = 'partially_filled';
+          updateOrderStatus(bestBid, 'partially_filled');
         }
       }
     }
 
-    order.status =
-      order.filledQuantity >= order.quantity
-        ? 'filled'
-        : order.filledQuantity > 0
-          ? 'partially_filled'
-          : 'cancelled';
+    const finalStatus = order.filledLots >= order.quantityLots
+      ? 'filled'
+      : order.filledLots > 0
+        ? 'partially_filled'
+        : 'cancelled';
+    updateOrderStatus(order, finalStatus);
 
     return trades;
   }
@@ -168,14 +195,14 @@ export class Orderbook {
     for (const [i, o] of this.bids.entries()) {
       if (o.id === orderId) {
         this.bids.splice(i, 1);
-        o.status = 'cancelled';
+        updateOrderStatus(o, 'cancelled');
         return o;
       }
     }
     for (const [i, o] of this.asks.entries()) {
       if (o.id === orderId) {
         this.asks.splice(i, 1);
-        o.status = 'cancelled';
+        updateOrderStatus(o, 'cancelled');
         return o;
       }
     }
@@ -184,25 +211,25 @@ export class Orderbook {
 
   /* ───────── Quote ───────── */
 
-  getQuote(side: OrderSide, quantity: number): QuoteResult | null {
-    const fills: { price: number; quantity: number }[] = [];
-    let remaining = quantity;
+  getQuote(side: OrderSide, quantityLots: number): QuoteResult | null {
+    const fills: { priceTicks: number; quantityLots: number }[] = [];
+    let remaining = quantityLots;
     const orders = side === 'buy' ? this.asks : this.bids;
 
     for (const order of orders) {
       if (remaining <= 0) break;
-      const available = order.quantity - order.filledQuantity;
+      const available = order.quantityLots - order.filledLots;
       const fillQty = Math.min(remaining, available);
-      fills.push({ price: order.price, quantity: fillQty });
+      fills.push({ priceTicks: order.priceTicks, quantityLots: fillQty });
       remaining -= fillQty;
     }
 
     if (fills.length === 0) return null;
 
-    const totalQuantity = fills.reduce((s, f) => s + f.quantity, 0);
-    const totalCost = fills.reduce((s, f) => s + f.price * f.quantity, 0);
+    const totalLots = fills.reduce((s, f) => s + f.quantityLots, 0);
+    const totalCostTicks = fills.reduce((s, f) => s + f.priceTicks * f.quantityLots, 0);
 
-    return { avgPrice: totalCost / totalQuantity, totalCost, totalQuantity, fills };
+    return { avgPriceTicks: totalCostTicks / totalLots, totalCostTicks, totalLots, fills };
   }
 
   /* ───────── Aggregated View ───────── */
@@ -211,13 +238,13 @@ export class Orderbook {
     const aggregate = (orders: Order[]): AggregatedBookLevel[] => {
       const levels = new Map<number, number>();
       for (const o of orders) {
-        const rem = o.quantity - o.filledQuantity;
-        if (rem > 0) levels.set(o.price, (levels.get(o.price) || 0) + rem);
+        const rem = o.quantityLots - o.filledLots;
+        if (rem > 0) levels.set(o.priceTicks, (levels.get(o.priceTicks) || 0) + rem);
       }
       return Array.from(levels.entries())
         .map(([price, quantity]) => ({
-          price: parseFloat(price.toFixed(6)),
-          quantity: parseFloat(quantity.toFixed(6)),
+          priceTicks: parseFloat(price.toFixed(6)),
+          quantityLots: parseFloat(quantity.toFixed(6)),
         }))
         .slice(0, depth);
     };
@@ -225,7 +252,7 @@ export class Orderbook {
     return {
       bids: aggregate(this.bids),
       asks: aggregate(this.asks),
-      lastTradePrice: this._lastTradePrice,
+      lastTradePriceTicks: this._lastTradePriceTicks,
     };
   }
 
@@ -239,12 +266,12 @@ export class Orderbook {
   /* ───────── Internals ───────── */
 
   private finalizeOrder(order: Order, side: OrderSide): void {
-    if (order.filledQuantity >= order.quantity) {
-      order.status = 'filled';
+    if (order.filledLots >= order.quantityLots) {
+      updateOrderStatus(order, 'filled');
     } else if (order.type === 'ioc') {
-      order.status = order.filledQuantity > 0 ? 'partially_filled' : 'cancelled';
+      updateOrderStatus(order, order.filledLots > 0 ? 'partially_filled' : 'cancelled');
     } else {
-      order.status = order.filledQuantity > 0 ? 'partially_filled' : 'open';
+      updateOrderStatus(order, order.filledLots > 0 ? 'partially_filled' : 'open');
       if (side === 'buy') this.insertBid(order);
       else this.insertAsk(order);
     }
@@ -258,8 +285,8 @@ export class Orderbook {
       const mid = (lo + hi) >>> 1;
       const c = this.bids[mid];
       if (
-        c.price > order.price ||
-        (c.price === order.price && c.createdAt <= order.createdAt)
+        c.priceTicks > order.priceTicks ||
+        (c.priceTicks === order.priceTicks && c.sequenceNumber <= order.sequenceNumber)
       ) {
         lo = mid + 1;
       } else {
@@ -277,8 +304,8 @@ export class Orderbook {
       const mid = (lo + hi) >>> 1;
       const c = this.asks[mid];
       if (
-        c.price < order.price ||
-        (c.price === order.price && c.createdAt <= order.createdAt)
+        c.priceTicks < order.priceTicks ||
+        (c.priceTicks === order.priceTicks && c.sequenceNumber <= order.sequenceNumber)
       ) {
         lo = mid + 1;
       } else {
@@ -291,18 +318,18 @@ export class Orderbook {
   private createTrade(
     buyOrder: Order,
     sellOrder: Order,
-    price: number,
-    quantity: number,
+    priceTicks: number,
+    quantityLots: number,
     takerSide: OrderSide
   ): Trade {
     this.tradeCounter++;
-    this._lastTradePrice = price;
+    this._lastTradePriceTicks = priceTicks;
 
     return {
       id: this.tradeCounter,
       market: this.market,
-      price,
-      quantity,
+      priceTicks,
+      quantityLots,
       buyOrderId: buyOrder.id,
       sellOrderId: sellOrder.id,
       buyerId: buyOrder.userId,
@@ -310,5 +337,28 @@ export class Orderbook {
       timestamp: Date.now(),
       takerSide,
     };
+  }
+
+  restoreState(orders: Order[]): void {
+    this.bids = [];
+    this.asks = [];
+    
+    for (const order of orders) {
+      if (order.status !== 'open' && order.status !== 'partially_filled') continue;
+      
+      const book = order.side === 'buy' ? this.bids : this.asks;
+      book.push({ ...order });
+    }
+
+    // Sort appropriately
+    this.bids.sort((a, b) => {
+      if (a.priceTicks !== b.priceTicks) return b.priceTicks - a.priceTicks;
+      return a.sequenceNumber < b.sequenceNumber ? -1 : 1;
+    });
+
+    this.asks.sort((a, b) => {
+      if (a.priceTicks !== b.priceTicks) return a.priceTicks - b.priceTicks;
+      return a.sequenceNumber < b.sequenceNumber ? -1 : 1;
+    });
   }
 }

@@ -1,4 +1,4 @@
-<h1 align="center">Stock Trading Platform</h1>
+# Deterministic Real-Time Exchange Engine
 
 <p align="center">
   <!-- TODO: Replace this placeholder with a 10-second auto-playing GIF of the platform in action -->
@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  A production-grade financial exchange with real-time orderbook, matching engine, candlestick charts, and full trading UI — built with TypeScript end-to-end.
+  A production-grade financial exchange with real-time orderbook, matching engine, candlestick charts, and full trading UI — built with TypeScript end-to-end. Featuring a price-time-priority matching engine, fixed-point financial arithmetic, SkipList orderbook, durable event journaling, snapshot/replay recovery, PostgreSQL double-entry settlement, idempotent processing, reconciliation, and production-style observability.
 </p>
 <p align="center">
   <img src="https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
@@ -17,177 +17,14 @@
   <img src="https://img.shields.io/badge/WebSocket-010101?style=for-the-badge&logo=socketdotio&logoColor=white" alt="WebSocket" />
 </p>
 
-<p align="center">
-  <img src="https://img.shields.io/github/license/iinaa-eimrit/Stock-Trading-Platform?style=flat-square" alt="License" />
-  <img src="https://img.shields.io/github/last-commit/iinaa-eimrit/Stock-Trading-Platform?style=flat-square" alt="Last Commit" />
-  <img src="https://img.shields.io/github/repo-size/iinaa-eimrit/Stock-Trading-Platform?style=flat-square" alt="Repo Size" />
-  <img src="https://img.shields.io/github/languages/top/iinaa-eimrit/Stock-Trading-Platform?style=flat-square" alt="Top Language" />
-</p>
+## Highlights
+- **1,250× Faster Cancellation**: Under a controlled 50K-resting-order cancellation benchmark, the SkipList implementation reduced total cancellation time from 37.5s to 29.8ms.
+- **Provably Green Test Suite**: 61 automated tests verifying the entire matching pipeline, deterministic operations, idempotency, and harsh crash recovery boundaries.
+- **Fail-Safe Integrity**: Survives abrupt process SIGKILLs and PostgreSQL outages without violating financial invariants.
 
----
+## Why it's interesting
 
-## Features
-
-- **Matching Engine** — In-memory orderbook with price-time priority, binary search insertion O(log n), supports limit/market/IOC orders with partial fills
-- **Real-time Streaming** — WebSocket-powered live orderbook, trades, tickers, and candlestick updates
-- **Candlestick Charts** — OHLC charts via TradingView Lightweight Charts with 1m/5m/15m/1h intervals
-- **4 Trading Markets** — ETH/USDC, BTC/USDC, TATA/INR, SOL/USDC
-- **Market Maker Bot** — Automated liquidity provider with 15 levels of depth per side
-- **Portfolio Management** — Real-time balance tracking with fund locking
-- **JWT Authentication** — Secure signup/signin with bcrypt password hashing
-- **Fully Typed** — End-to-end TypeScript with zero type errors
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|------------|
-| **Backend** | Node.js · Express · TypeScript |
-| **Matching Engine** | Custom in-memory orderbook with price-time priority |
-| **Real-time** | WebSocket (ws library) |
-| **Frontend** | React 18 · Vite 5 · TypeScript |
-| **Charts** | TradingView Lightweight Charts |
-| **Auth** | JWT · bcryptjs |
-| **Deployment** | Render (backend) · Vercel (frontend) |
-
----
-
-## Quick Start
-
-### Prerequisites
-
-- Node.js 18+
-- npm 9+
-
-### 1. Clone
-
-```bash
-git clone https://github.com/iinaa-eimrit/Stock-Trading-Platform.git
-cd Stock-Trading-Platform
-```
-
-### 2. Backend
-
-```bash
-cd backend
-npm install
-npm run dev          # starts on http://localhost:3001
-```
-
-### 3. Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev          # starts on http://localhost:5173
-```
-
-Open **http://localhost:5173**, create an account, and start trading.
-
----
-
-## Supported Markets
-
-| Symbol | Base | Quote | Description |
-|--------|------|-------|-------------|
-| ETH_USDC | ETH | USDC | Ethereum / USD Coin |
-| BTC_USDC | BTC | USDC | Bitcoin / USD Coin |
-| TATA_INR | TATA | INR | Tata / Indian Rupee |
-| SOL_USDC | SOL | USDC | Solana / USD Coin |
-
----
-
-## API Reference
-
-### Auth
-| Method | Endpoint | Body | Response |
-|--------|----------|------|----------|
-| POST | `/api/v1/signup` | `{ email, password }` | `{ token, userId }` |
-| POST | `/api/v1/signin` | `{ email, password }` | `{ token, userId }` |
-
-### Orders (requires `Authorization: Bearer <token>`)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/v1/order` | Place order `{ type, side, price?, quantity, market }` |
-| GET | `/api/v1/order` | List user's orders |
-| GET | `/api/v1/order/:id` | Get specific order |
-| DELETE | `/api/v1/order/:id` | Cancel open order |
-| POST | `/api/v1/order/quote` | Get price estimate `{ market, side, quantity }` |
-
-### Market Data (public)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/markets` | List all markets |
-| GET | `/api/v1/markets/:market/orderbook` | Orderbook snapshot |
-| GET | `/api/v1/markets/:market/trades` | Recent trades |
-| GET | `/api/v1/markets/:market/candles?interval=1m` | OHLC candles |
-
-### Account
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/balance` | User asset balances |
-
----
-
-## WebSocket
-
-Connect to `ws://localhost:3001/ws` (or `wss://` in production)
-
-```json
-{ "method": "subscribe", "params": ["orderbook@ETH_USDC", "trades@ETH_USDC", "ticker@ETH_USDC", "candles@ETH_USDC@1m"] }
-```
-
-| Stream | Format | Description |
-|--------|--------|-------------|
-| `orderbook@{market}` | `{ bids, asks }` | Live orderbook depth |
-| `trades@{market}` | `Trade[]` | Real-time trade feed |
-| `ticker@{market}` | `{ price, timestamp }` | Last price tick |
-| `candles@{market}@{interval}` | `Candle` | Live OHLC updates |
-
----
-
-## Deployment
-
-### Backend → Render (free)
-
-1. Go to [render.com](https://render.com) → **New** → **Web Service** → connect your GitHub repo `Stock-Trading-Platform`
-2. **Settings:**
-   - **Name**: `stock-trading-backend`
-   - **Root Directory**: `backend`
-   - **Runtime**: Node
-   - **Build Command**: `npm install && npm run build`
-   - **Start Command**: `node dist/index.js`
-   - **Instance Type**: Free
-3. **Environment Variables:**
-   | Variable | Value |
-   |----------|-------|
-   | `JWT_SECRET` | *(generate a random string)* |
-   | `FRONTEND_URL` | `https://your-app.vercel.app` *(add after Vercel deploy)* |
-4. Click **Create Web Service** → copy the URL (e.g. `https://stock-trading-backend.onrender.com`)
-
-> Free tier spins down after 15 min of inactivity (~30s cold start). This is normal for a portfolio project.
-
-### Frontend → Vercel (free)
-
-1. Go to [vercel.com](https://vercel.com) → **Add New Project** → import `Stock-Trading-Platform` from GitHub
-2. **Framework Preset**: Vite
-3. **Root Directory**: `frontend`
-4. **Environment Variables:**
-   | Variable | Value |
-   |----------|-------|
-   | `VITE_API_URL` | `https://stock-trading-backend.onrender.com` *(your Render backend URL)* |
-5. Click **Deploy**
-
-> `VITE_API_URL` is injected at build time — the frontend uses it for REST API calls and WebSocket connections to the backend.
-
-### After Both Are Live
-
-- Go back to Render → your backend service → **Environment** tab
-- Set `FRONTEND_URL` = `https://your-app.vercel.app` (your Vercel URL)
-- This enables CORS so the frontend can talk to the backend
-
----
+Building a stock exchange demands balancing blistering throughput with zero-tolerance for dropped data. Most side-projects default to CRUD endpoints writing to a database; this project avoids premature database reads by keeping the authoritative matching engine in memory and persisting deterministic event journals. By moving truth to the journal, the engine can be purely deterministic, scalable, and crash-resilient.
 
 ## System Architecture
 
@@ -201,58 +38,168 @@ For a financial exchange, millisecond latency is critical. We utilize multiplexe
 - **In-Memory Orderbook:** The core matching engine runs entirely in-memory using highly optimized data structures (price-time priority, binary search insertion for `O(log n)` performance) to ensure microsecond order execution.
 - **Trade-offs:** While an in-memory state provides extreme speed, it requires a robust event-sourcing or write-ahead-log (WAL) architecture for fault tolerance. Currently, state persistence is handled periodically to balance durability with latency.
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full system design including:
-
-- System architecture diagram
-- Matching engine deep-dive (price-time priority, binary search, fill logic)
-- Database schema
-- Scaling strategy (horizontal scaling, event bus, CQRS)
-- Low-latency optimizations
-
----
-
-## Project Structure
-
-```
-Stock-Trading-Platform/
-├── backend/
-│   ├── src/
-│   │   ├── config/          # Markets, env vars, market maker configs
-│   │   ├── db/              # In-memory user & balance store
-│   │   ├── engine/          # Orderbook + matching engine core
-│   │   ├── middleware/      # JWT auth middleware
-│   │   ├── routes/          # REST API routes
-│   │   ├── services/        # WebSocket, market data, market maker
-│   │   └── index.ts         # Server entry point
-│   ├── package.json
-│   └── tsconfig.json
-├── frontend/
-│   ├── src/
-│   │   ├── api/             # REST API client
-│   │   ├── components/      # React UI components
-│   │   ├── hooks/           # WebSocket hook
-│   │   ├── types/           # TypeScript interfaces
-│   │   ├── App.tsx          # Main application
-│   │   └── main.tsx         # Entry point
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── vite.config.ts
-├── docs/
-│   └── ARCHITECTURE.md      # System design documentation
-├── railway.json              # Railway deployment config
-├── render.yaml               # Render deployment blueprint
-├── vercel.json               # Vercel deployment config
-└── README.md
+```text
+                    Client
+                      │
+               REST / WebSocket
+                      │
+                ┌─────▼─────┐
+                │ API Layer │
+                └─────┬─────┘
+                      │
+                ┌─────▼─────┐
+                │ Risk      │
+                └─────┬─────┘
+                      │
+                ┌─────▼────────┐
+                │ Matching     │
+                │ SkipList OB  │
+                └─────┬────────┘
+                      │
+                  Domain Events
+                      │
+             ┌────────┴────────┐
+             ▼                 ▼
+          Journal          Settlement
+             │                 │
+        Snapshot/Replay    PostgreSQL
+                               │
+                         Double Entry
 ```
 
----
+## Key Case Studies
 
-## License
+### 01 — Fixed-Point Arithmetic
 
-MIT
+**Problem**: Repeated fractional fills caused IEEE-754 drift.
 
----
+**Evidence**: A property test produced:
+```text
+1.9100000000000001 > 1.91
+```
+and violated a domain invariant.
 
-<p align="center">
-  Built with TypeScript · Inspired by real exchanges like Binance & NSE
-</p>
+**Solution**: Moved the core domain to `PriceTicks` and `QuantityLots` with strict integer arithmetic.
+
+**Impact**: The matching and accounting layers no longer depend on floating-point equality.
+
+### 02 — Orderbook Scaling
+
+**Problem**: The naive array-based orderbook had linear cancellation behavior.
+
+**Evidence**: 
+```text
+1K   → 34.32 ms
+10K  → 768.95 ms
+50K  → 37.508 s
+```
+
+**Solution**: 
+```text
+SkipList price index
++
+FIFO linked price levels
++
+OrderId → OrderNode Map
+```
+
+**Validation**: 100K deterministic operations were run through both implementations and compared after every operation.
+
+### 03 — PostgreSQL Outage
+
+**Problem**: Journal persistence can succeed while PostgreSQL is temporarily unavailable.
+
+**Solution**:
+```text
+journal-first
++
+idempotent settlement
++
+startup catch-up
+```
+
+**Failure scenario**:
+```text
+match
+→ journal fsync
+→ PostgreSQL failure
+→ restart
+→ syncSettlement()
+→ financial state catches up
+```
+
+**Validation**: Reconciliation demonstrated:
+```text
+materialized accounts
+==
+ledger-derived balances
+==
+journal-derived financial state
+```
+
+## Engineering Decisions
+
+### Why SkipList?
+Because the measured cancellation behavior of the original array implementation became unacceptable at deep books. 
+
+### Why synchronous matching?
+Because deterministic sequencing and simple state ownership were more valuable than premature distributed ingestion.
+
+### Why PostgreSQL?
+Because financial settlement requires durable transactional state and accounting invariants. 
+
+### Why file journaling?
+Because it provides a simple, inspectable durable event history without prematurely introducing a distributed broker.
+
+### Why no Kafka/Redis?
+Because benchmarks did not establish a need for distributed ingestion yet. 
+
+## Deliberate Non-Goals
+
+Kafka/Redis ingestion and Kubernetes were intentionally deferred. 
+
+The system first established:
+- deterministic matching
+- durable journaling
+- transactional settlement
+- crash recovery
+- reconciliation
+- measured bottlenecks
+
+Additional distributed infrastructure should be introduced only when a measured workload justifies it.
+
+## Testing & Verification
+
+Run the full application correctness suite:
+```bash
+cd backend
+npm run verify
+```
+
+Run the exhaustive test suite including Hostile Database/Process Crash Recovery:
+```bash
+cd backend
+npm run verify:full
+```
+
+## Local Setup
+
+```bash
+git clone https://github.com/your-username/Stock-Trading-Platform.git
+cd Stock-Trading-Platform
+
+# Start the PostgreSQL Database and Prometheus Metrics stack
+docker compose up --build -d
+
+# Start the Exchange Backend
+cd backend
+npm install
+npm run migrate
+npm run dev
+```
+
+*Note: The frontend implementation is provided in the `frontend` folder. It can be run independently with `npm start` after configuring environment variables to point to the backend API.*
+
+## API
+
+The engine supports limit orders, market orders, immediate-or-cancel (IOC) orders, matching, and basic account management over HTTP REST endpoints and streaming WebSocket channels. The API conforms to standard idempotency principles, ensuring duplicate `clientOrderId`s are caught and settled correctly without double-charging users.

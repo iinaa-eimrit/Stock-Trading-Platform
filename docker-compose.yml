@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: exchange
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: exchange
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U exchange -d exchange"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  migrate:
+    build: 
+      context: ./backend
+    environment:
+      DATABASE_URL: postgres://exchange:password@postgres:5432/exchange
+    command: ["node", "dist/db/migrate.js"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  exchange:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: postgres://exchange:password@postgres:5432/exchange
+      PORT: 3001
+      NODE_ENV: production
+      LOG_LEVEL: info
+      JOURNAL_PATH: /app/data/exchange.journal
+    ports:
+      - "3001:3001"
+    restart: on-failure
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', (r) => { if (r.statusCode !== 200) process.exit(1); else process.exit(0); }).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    volumes:
+      - exchange_data:/app/data
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    depends_on:
+      exchange:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  pgdata:
+  exchange_data:

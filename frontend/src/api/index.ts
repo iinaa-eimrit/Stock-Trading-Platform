@@ -32,12 +32,32 @@ export const api = {
 
   getMarkets: () => request<any[]>('/markets'),
 
-  getOrderbook: (market: string) => request<any>(`/markets/${market}/orderbook`),
+  getOrderbook: async (market: string) => {
+    const data = await request<any>(`/markets/${market}/orderbook`);
+    const mapLevel = (l: any) => ({
+      price: l.price ?? (l.priceTicks ? l.priceTicks / 1000 : 0),
+      quantity: l.quantity ?? (l.quantityLots ? l.quantityLots / 10000 : 0)
+    });
+    return {
+      bids: (data.bids || []).map(mapLevel),
+      asks: (data.asks || []).map(mapLevel),
+      lastTradePrice: data.lastTradePrice ?? (data.lastTradePriceTicks ? data.lastTradePriceTicks / 1000 : null)
+    };
+  },
 
   getTrades: (market: string) => request<any[]>(`/markets/${market}/trades`),
 
-  getCandles: (market: string, interval = '1m') =>
-    request<any[]>(`/markets/${market}/candles?interval=${interval}`),
+  getCandles: async (market: string, interval = '1m') => {
+    const raw = await request<any[]>(`/markets/${market}/candles?interval=${interval}`);
+    return raw.map(c => ({
+      ...c,
+      open: c.open ?? (c.openTicks ? c.openTicks / 1000 : 0),
+      high: c.high ?? (c.highTicks ? c.highTicks / 1000 : 0),
+      low: c.low ?? (c.lowTicks ? c.lowTicks / 1000 : 0),
+      close: c.close ?? (c.closeTicks ? c.closeTicks / 1000 : 0),
+      volume: c.volume ?? (c.volumeLots ? c.volumeLots / 10000 : 0)
+    }));
+  },
 
   placeOrder: (params: any) =>
     request<any>('/order', { method: 'POST', body: JSON.stringify(params) }),

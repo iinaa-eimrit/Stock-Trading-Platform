@@ -20,6 +20,19 @@ router.post('/signup', async (req: Request, res: Response) => {
 
     const id = uuidv4();
     await store.createUser(id, email, password);
+
+    // Initialize user in Postgres and fund test accounts
+    const { query } = require('../db/db');
+    await query(`INSERT INTO users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [id]);
+    const initialBalance = 10000000000000n; // 100k
+    const assets = ['USDC', 'ETH', 'BTC', 'SOL', 'TATA', 'INR'];
+    for (const asset of assets) {
+      await query(
+        `INSERT INTO accounts (id, user_id, asset, available_units) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+        [`${id}_${asset}`, id, asset, initialBalance.toString()]
+      );
+    }
+
     const token = jwt.sign({ userId: id }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ success: true, data: { token, userId: id } });
   } catch (err: any) {

@@ -61,35 +61,41 @@ class Store {
     bal.available += unlock;
   }
 
-  executeTrade(
-    buyerId: string,
-    sellerId: string,
-    baseAsset: string,
-    quoteAsset: string,
-    price: number,
-    quantity: number
-  ): void {
-    const cost = price * quantity;
+  public async settle(
+    buyerId: string, 
+    sellerId: string, 
+    baseAsset: string, 
+    quoteAsset: string, 
+    baseAmount: number, // 8-decimal integer
+    quoteAmount: number, // 8-decimal integer
+    buyerFeeBase: number = 0,
+    sellerFeeQuote: number = 0
+  ): Promise<void> {
+    if (quoteAmount <= 0 || baseAmount <= 0) return;
 
-    if (buyerId !== '__market_maker__') {
-      const buyer = this.users.get(buyerId);
-      if (buyer) {
-        if (!buyer.balances[quoteAsset]) buyer.balances[quoteAsset] = { available: 0, locked: 0 };
-        if (!buyer.balances[baseAsset]) buyer.balances[baseAsset] = { available: 0, locked: 0 };
-        buyer.balances[quoteAsset].locked = Math.max(0, buyer.balances[quoteAsset].locked - cost);
-        buyer.balances[baseAsset].available += quantity;
-      }
-    }
+    // The buyer must have reserved quoteAsset.
+    // The seller must have reserved baseAsset.
 
-    if (sellerId !== '__market_maker__') {
-      const seller = this.users.get(sellerId);
-      if (seller) {
-        if (!seller.balances[baseAsset]) seller.balances[baseAsset] = { available: 0, locked: 0 };
-        if (!seller.balances[quoteAsset]) seller.balances[quoteAsset] = { available: 0, locked: 0 };
-        seller.balances[baseAsset].locked = Math.max(0, seller.balances[baseAsset].locked - quantity);
-        seller.balances[quoteAsset].available += cost;
-      }
-    }
+    const buyer = this.users.get(buyerId);
+    const seller = this.users.get(sellerId);
+    
+    if (!buyer || !seller) return;
+
+    if (!buyer.balances[quoteAsset]) buyer.balances[quoteAsset] = { available: 0, locked: 0 };
+    if (!seller.balances[baseAsset]) seller.balances[baseAsset] = { available: 0, locked: 0 };
+    if (!buyer.balances[baseAsset]) buyer.balances[baseAsset] = { available: 0, locked: 0 };
+    if (!seller.balances[quoteAsset]) seller.balances[quoteAsset] = { available: 0, locked: 0 };
+
+    if (buyer.balances[quoteAsset].locked < quoteAmount) throw new Error('Buyer does not have enough locked quote asset');
+    if (seller.balances[baseAsset].locked < baseAmount) throw new Error('Seller does not have enough locked base asset');
+
+    // 1. Deduct locked balances
+    buyer.balances[quoteAsset].locked -= quoteAmount;
+    seller.balances[baseAsset].locked -= baseAmount;
+
+    // 2. Add to available balances (minus fees)
+    buyer.balances[baseAsset].available += (baseAmount - buyerFeeBase);
+    seller.balances[quoteAsset].available += (quoteAmount - sellerFeeQuote);
   }
 
   getAllBalances(userId: string): Record<string, { available: number; locked: number }> {
