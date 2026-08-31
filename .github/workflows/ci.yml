@@ -11,10 +11,10 @@ jobs:
     name: Fast CI (Lint, Typecheck, Unit Tests)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
@@ -60,10 +60,10 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
@@ -119,7 +119,7 @@ jobs:
         run: k6 run --summary-export=k6-summary.json load-test/load.js
 
       - name: Archive Load Test Summary
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: k6-benchmark-summary
           path: backend/k6-summary.json
