@@ -2,6 +2,7 @@ import { PoolClient } from 'pg';
 import { ExchangeEvent, TradeExecutedEvent, OrderCancelledEvent } from '../events/types';
 import { withTransaction } from './db';
 import { v4 as uuidv4 } from 'uuid';
+import { MARKETS } from '../config';
 
 export class SettlementEngine {
   
@@ -19,14 +20,8 @@ export class SettlementEngine {
 
   public async settleEventsWithClient(client: PoolClient, events: ExchangeEvent[]): Promise<void> {
     if (events.length === 0) return;
-    
-    // Sort events to process ACCEPTED first, then TRADES, then CANCELLED
-    const sortedEvents = [...events].sort((a, b) => {
-      const order = { 'ORDER_ACCEPTED': 1, 'TRADE_EXECUTED': 2, 'ORDER_CANCELLED': 3 };
-      return (order[a.type as keyof typeof order] || 4) - (order[b.type as keyof typeof order] || 4);
-    });
 
-    for (const event of sortedEvents) {
+    for (const event of events) {
       if (event.type === 'ORDER_ACCEPTED') {
         await this.settleAccepted(client, event as any);
       } else if (event.type === 'TRADE_EXECUTED') {
@@ -43,14 +38,15 @@ export class SettlementEngine {
        VALUES ($1, $2, $3, $4) ON CONFLICT (event_id) DO NOTHING RETURNING event_id`,
       [event.eventId, event.sequenceNumber, event.type, 'SETTLED']
     );
-    if (checkRes.rowCount === 0) return;
+    if (checkRes.rowCount === 0) {
+      const existing = await client.query(`SELECT exchange_sequence, event_type FROM settlement_events WHERE event_id = $1`, [event.eventId]);
+      if (existing.rows.length > 0 && existing.rows[0].exchange_sequence !== event.sequenceNumber.toString()) {
+        throw new Error(`Fatal Integrity Error: Event ID ${event.eventId} reused with mismatched sequence. DB: ${existing.rows[0].exchange_sequence}, Event: ${event.sequenceNumber}`);
+      }
+      return;
+    }
 
     // Lock funds for the order
-    const MARKETS = [
-      { symbol: 'ETH_USDC', tickSize: 0.01, lotSize: 0.0001, baseAsset: 'ETH', quoteAsset: 'USDC' },
-      { symbol: 'BTC_USDC', tickSize: 0.1, lotSize: 0.00001, baseAsset: 'BTC', quoteAsset: 'USDC' },
-      { symbol: 'SOL_USDC', tickSize: 0.001, lotSize: 0.01, baseAsset: 'SOL', quoteAsset: 'USDC' }
-    ];
     const mkt = MARKETS.find(m => m.symbol === event.market)!;
     
     // lotSize/tickSize to integer units
@@ -96,7 +92,13 @@ export class SettlementEngine {
        VALUES ($1, $2, $3, $4) ON CONFLICT (event_id) DO NOTHING RETURNING event_id`,
       [event.eventId, event.sequenceNumber, event.type, 'SETTLED']
     );
-    if (checkRes.rowCount === 0) return;
+    if (checkRes.rowCount === 0) {
+      const existing = await client.query(`SELECT exchange_sequence, event_type FROM settlement_events WHERE event_id = $1`, [event.eventId]);
+      if (existing.rows.length > 0 && existing.rows[0].exchange_sequence !== event.sequenceNumber.toString()) {
+        throw new Error(`Fatal Integrity Error: Event ID ${event.eventId} reused with mismatched sequence. DB: ${existing.rows[0].exchange_sequence}, Event: ${event.sequenceNumber}`);
+      }
+      return;
+    }
 
     await client.query(
       `INSERT INTO trades (trade_id, exchange_event_id, market, buyer_id, seller_id, price_ticks, quantity_lots)
@@ -126,11 +128,6 @@ export class SettlementEngine {
     const getAccount = (userId: string, asset: string) => accountMap.get(userId)?.get(asset);
 
     // Let's get the market config to compute real units
-    const MARKETS = [
-      { symbol: 'ETH_USDC', tickSize: 0.01, lotSize: 0.0001, baseAsset: 'ETH', quoteAsset: 'USDC' },
-      { symbol: 'BTC_USDC', tickSize: 0.1, lotSize: 0.00001, baseAsset: 'BTC', quoteAsset: 'USDC' },
-      { symbol: 'SOL_USDC', tickSize: 0.001, lotSize: 0.01, baseAsset: 'SOL', quoteAsset: 'USDC' }
-    ];
     const mkt = MARKETS.find(m => m.symbol === event.market)!;
     
     // lotSize/tickSize to integer units
@@ -202,13 +199,14 @@ export class SettlementEngine {
        VALUES ($1, $2, $3, $4) ON CONFLICT (event_id) DO NOTHING RETURNING event_id`,
       [event.eventId, event.sequenceNumber, event.type, 'SETTLED']
     );
-    if (checkRes.rowCount === 0) return;
+    if (checkRes.rowCount === 0) {
+      const existing = await client.query(`SELECT exchange_sequence, event_type FROM settlement_events WHERE event_id = $1`, [event.eventId]);
+      if (existing.rows.length > 0 && existing.rows[0].exchange_sequence !== event.sequenceNumber.toString()) {
+        throw new Error(`Fatal Integrity Error: Event ID ${event.eventId} reused with mismatched sequence. DB: ${existing.rows[0].exchange_sequence}, Event: ${event.sequenceNumber}`);
+      }
+      return;
+    }
 
-    const MARKETS = [
-      { symbol: 'ETH_USDC', tickSize: 0.01, lotSize: 0.0001, baseAsset: 'ETH', quoteAsset: 'USDC' },
-      { symbol: 'BTC_USDC', tickSize: 0.1, lotSize: 0.00001, baseAsset: 'BTC', quoteAsset: 'USDC' },
-      { symbol: 'SOL_USDC', tickSize: 0.001, lotSize: 0.01, baseAsset: 'SOL', quoteAsset: 'USDC' }
-    ];
     const mkt = MARKETS.find(m => m.symbol === event.market)!;
     
     // lotSize/tickSize to integer units

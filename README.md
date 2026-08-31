@@ -1,12 +1,11 @@
 # Deterministic Real-Time Exchange Engine
 
 <p align="center">
-  <!-- TODO: Replace this placeholder with a 10-second auto-playing GIF of the platform in action -->
-  <img src="https://via.placeholder.com/800x400.png?text=Add+10-second+Live+Demo+GIF+Here+(WebSockets+streaming)" alt="Stock Trading Platform Demo" width="800" />
+  A deterministic real-time exchange simulator and matching engine built with TypeScript.
 </p>
-
 <p align="center">
-  A production-grade financial exchange with real-time orderbook, matching engine, candlestick charts, and full trading UI — built with TypeScript end-to-end. Featuring a price-time-priority matching engine, fixed-point financial arithmetic, SkipList orderbook, durable event journaling, snapshot/replay recovery, PostgreSQL double-entry settlement, idempotent processing, reconciliation, and production-style observability.
+  <b>Core:</b> TypeScript · Node.js · React · WebSockets · PostgreSQL<br/>
+  <b>Engineering:</b> Deterministic matching · Fixed-point arithmetic · SkipList orderbook · Event journal · Snapshot/replay · ACID double-entry settlement · Idempotent processing · Reconciliation · Prometheus · Docker · GitHub Actions · k6
 </p>
 <p align="center">
   <img src="https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
@@ -19,12 +18,11 @@
 
 ## Highlights
 - **1,250× Faster Cancellation**: Under a controlled 50K-resting-order cancellation benchmark, the SkipList implementation reduced total cancellation time from 37.5s to 29.8ms.
-- **Provably Green Test Suite**: 61 automated tests verifying the entire matching pipeline, deterministic operations, idempotency, and harsh crash recovery boundaries.
+- **Provably Green Test Suite**: Comprehensive automated coverage including unit, property-based, differential, integration, and recovery tests verifying the entire matching pipeline, deterministic operations, idempotency, and harsh crash recovery boundaries.
 - **Fail-Safe Integrity**: Survives abrupt process SIGKILLs and PostgreSQL outages without violating financial invariants.
 
-## Why it's interesting
-
-Building a stock exchange demands balancing blistering throughput with zero-tolerance for dropped data. Most side-projects default to CRUD endpoints writing to a database; this project avoids premature database reads by keeping the authoritative matching engine in memory and persisting deterministic event journals. By moving truth to the journal, the engine can be purely deterministic, scalable, and crash-resilient.
+## Why I built this
+I wanted to explore the engineering tradeoffs behind real-time exchange systems: deterministic matching, financial precision, durable event history, transactional settlement, crash recovery, and performance under deep orderbooks.
 
 ## System Architecture
 
@@ -35,8 +33,9 @@ For a financial exchange, millisecond latency is critical. We utilize multiplexe
 3. **State Syncing:** Allows the React frontend to maintain an accurate, lightweight local copy of the orderbook that updates incrementally rather than fetching the full state on every tick.
 
 ### State Management & The Matching Engine
-- **In-Memory Orderbook:** The core matching engine runs entirely in-memory using highly optimized data structures (price-time priority, binary search insertion for `O(log n)` performance) to ensure microsecond order execution.
+- **In-Memory Orderbook:** The production orderbook uses a SkipList-indexed price structure with FIFO-linked price levels and O(1) order-ID lookup/removal. The original array implementation is retained as a behavioral reference for differential testing and benchmarking.
 - **Trade-offs:** While an in-memory state provides extreme speed, it requires a robust event-sourcing or write-ahead-log (WAL) architecture for fault tolerance. Currently, state persistence is handled periodically to balance durability with latency.
+- **Fee Model:** The exchange charges a symmetrical `0.1%` fee to both Makers and Takers for executed trades. The settlement engine is responsible for computing and deducting this `0.1%` fee from the buyer/seller during trade finalization.
 
 ```text
                     Client

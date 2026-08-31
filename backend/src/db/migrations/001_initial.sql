@@ -80,6 +80,24 @@ $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS enforce_ledger_balance ON ledger_entries;
 CREATE CONSTRAINT TRIGGER enforce_ledger_balance
-AFTER INSERT OR UPDATE ON ledger_entries
+AFTER INSERT ON ledger_entries
 DEFERRABLE INITIALLY DEFERRED
 FOR EACH ROW EXECUTE FUNCTION verify_ledger_balance();
+
+-- Block UPDATE and DELETE on ledger_entries for strict immutability
+CREATE OR REPLACE FUNCTION block_ledger_mutation()
+RETURNS TRIGGER AS $$
+BEGIN
+    RAISE EXCEPTION 'ledger_entries is append-only. UPDATE and DELETE operations are strictly prohibited.';
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS prevent_ledger_update ON ledger_entries;
+CREATE TRIGGER prevent_ledger_update
+BEFORE UPDATE ON ledger_entries
+FOR EACH ROW EXECUTE FUNCTION block_ledger_mutation();
+
+DROP TRIGGER IF EXISTS prevent_ledger_delete ON ledger_entries;
+CREATE TRIGGER prevent_ledger_delete
+BEFORE DELETE ON ledger_entries
+FOR EACH ROW EXECUTE FUNCTION block_ledger_mutation();

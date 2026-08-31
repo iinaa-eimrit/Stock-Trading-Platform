@@ -22,9 +22,9 @@ jobs:
 
       - name: Install dependencies
         working-directory: ./backend
-        run: npm ci || npm install
+        run: npm ci
 
-      - name: Security Scan (npm audit)
+      - name: Security scan — informational
         working-directory: ./backend
         run: npm audit --audit-level=high || true
 
@@ -71,7 +71,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: ./backend
-        run: npm ci || npm install
+        run: npm ci
 
       - name: Run Database Migrations (Fresh DB)
         working-directory: ./backend
