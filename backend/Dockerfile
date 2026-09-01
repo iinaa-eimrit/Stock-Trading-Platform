@@ -15,6 +15,7 @@ WORKDIR /app
 
 # Run as non-root user for security
 RUN groupadd -r exchange && useradd -r -g exchange exchange
+RUN mkdir -p /app/data && chown -R exchange:exchange /app/data
 USER exchange
 
 COPY --from=production-dependencies /app/node_modules ./node_modules

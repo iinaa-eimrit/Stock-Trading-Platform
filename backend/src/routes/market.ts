@@ -10,7 +10,7 @@ export function createMarketRouter(engine: MatchingEngine, marketData: MarketDat
       const book = engine.getOrderbook(m);
       return {
         id: m,
-        symbol: m.replace('_', '/'),
+        symbol: m,
         lastTradePriceTicks: book?.lastTradePriceTicks ?? null
       };
     });
