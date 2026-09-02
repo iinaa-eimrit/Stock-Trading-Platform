@@ -73,6 +73,10 @@ jobs:
         working-directory: ./backend
         run: npm ci
 
+      - name: Build backend
+        working-directory: ./backend
+        run: npm run build
+
       - name: Run Database Migrations (Fresh DB)
         working-directory: ./backend
         env:
