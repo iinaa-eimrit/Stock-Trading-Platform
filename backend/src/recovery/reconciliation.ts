@@ -26,7 +26,7 @@ async function reconcile() {
   }
 
   // 3. Journal expected balance
-  const journal = new FileJournal('exchange.journal');
+  const journal = new FileJournal(process.env.JOURNAL_PATH || 'exchange.journal');
   const journalBalance = new Map<string, bigint>();
 
   const getOrInit = (accountId: string) => {

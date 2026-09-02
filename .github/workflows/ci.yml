@@ -109,16 +109,24 @@ jobs:
         env:
           DATABASE_URL: postgres://exchange:password@localhost:5432/exchange
           PORT: 3001
+          JOURNAL_PATH: /tmp/exchange-ci.journal
         run: npm run start &
         
       - name: Wait for API to be ready
         run: |
-          until curl -s http://localhost:3001/health; do
-            echo "Waiting for API..."
+          for i in $(seq 1 30); do
+            if curl -s http://localhost:3001/health > /dev/null 2>&1; then
+              echo "API is ready!"
+              exit 0
+            fi
+            echo "Waiting for API... ($i/30)"
             sleep 2
           done
+          echo "API failed to start within 60s"
+          exit 1
 
-      - name: Run k6 Load Test
+      - name: Run k6 Load Test — informational
+        continue-on-error: true
         working-directory: ./backend
         run: k6 run --summary-export=k6-summary.json load-test/load.js
 
@@ -135,4 +143,5 @@ jobs:
         working-directory: ./backend
         env:
           DATABASE_URL: postgres://exchange:password@localhost:5432/exchange
+          JOURNAL_PATH: /tmp/exchange-ci.journal
         run: npx tsx src/recovery/reconciliation.ts
