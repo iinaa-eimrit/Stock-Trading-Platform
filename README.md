@@ -132,6 +132,26 @@ Materialized Account Balances ≡ Ledger Double-Entry Sums ≡ Journal Event Str
 ```
 If any divergence is detected down to a single satoshi/cent, the engine refuses startup and halts.
 
+> **Invariant:** Recovery may replay events more than once, but the resulting financial state must remain idempotent and converge to the same ledger-derived balances.
+
+### Reproduce Benchmarks & Verification
+
+The differential scaling benchmark and crash recovery suite can be reproduced locally:
+
+```bash
+cd backend
+npm install
+
+# 1. Run 100K-operation differential benchmark (Naive Array vs SkipList scaling)
+npm run test:differential:stress
+
+# 2. Run crash recovery and double-entry reconciliation test
+npm run test:recovery
+
+# 3. Run hostile crash test (simulated SIGKILL mid-journaling)
+npm run test:recovery:hostile
+```
+
 ## Engineering Decisions
 
 ### Why SkipList?
