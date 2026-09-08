@@ -34,7 +34,7 @@ For a financial exchange, millisecond latency is critical. We utilize multiplexe
 
 ### State Management & The Matching Engine
 - **In-Memory Orderbook:** The optimized orderbook uses a SkipList-indexed price structure with FIFO-linked price levels and O(1) order-ID lookup/removal. The original array implementation is retained as a behavioral reference for differential testing and benchmarking.
-- **Trade-offs:** While an in-memory state provides low-latency execution, it requires an event-sourcing or write-ahead-log (WAL) architecture for fault tolerance. Currently, state persistence is handled periodically to balance durability with latency.
+- **Trade-offs:** While an in-memory state provides low-latency execution, it requires an append-only event-journaling architecture for fault tolerance. Currently, state persistence is handled periodically to balance durability with latency.
 - **Fee Model:** The exchange charges a symmetrical `0.1%` fee to both Makers and Takers for executed trades. The settlement engine is responsible for computing and deducting this `0.1%` fee from the buyer/seller during trade finalization.
 
 ```text
@@ -127,7 +127,7 @@ Measured under a controlled 100K-operation differential test suite comparing the
 ```text
 1. In-Flight Trade Executed
    │
-2. Synchronous Journal Write (WAL append + fsync)
+2. Synchronous Journal Write (durable journal append + fsync)
    │
 3. [CRASH SIMULATION / SIGKILL] ──► Downstream PostgreSQL Not Yet Updated
    │
@@ -145,7 +145,7 @@ After crash recovery and load runs, an automated reconciliation suite verifies a
 ```text
 Materialized Account Balances ≡ Ledger Double-Entry Sums ≡ Journal Event Stream Balances
 ```
-If any divergence is detected down to a single satoshi/cent, the engine refuses startup and halts.
+In this simulator, startup halts if reconciliation detects any divergence down to a single satoshi/cent.
 
 > **Invariant:** Recovery may replay events more than once, but the resulting financial state must remain idempotent and converge to the same ledger-derived balances.
 
@@ -153,7 +153,7 @@ If any divergence is detected down to a single satoshi/cent, the engine refuses 
 
 | Scenario | System Behavior & Guarantee |
 | :--- | :--- |
-| **Simulated `SIGKILL` Termination** | In-flight memory state is lost, but the write-ahead journal (`file-journal.ts`) is flushed synchronously before client ACK. On restart, the engine loads the last hourly snapshot and deterministically replays events starting at `snapshot.lastEventSequenceNumber + 1`. |
+| **Simulated `SIGKILL` Termination** | In-flight memory state is lost, but the durable event journal (`file-journal.ts`) is flushed synchronously before client ACK. On restart, the engine loads the last hourly snapshot and deterministically replays events starting at `snapshot.lastEventSequenceNumber + 1`. |
 | **PostgreSQL Outage / Settlement Latency** | Matching and journaling continue uninterrupted. The journal retains uncommitted records; when the database reconnects, `syncSettlement()` replays pending trades into PostgreSQL using `ON CONFLICT (id) DO NOTHING` within ACID double-entry balance transactions. |
 | **Crash Mid-Snapshot** | Snapshots are written to `.snapshot.tmp` and atomically renamed only upon full serialization. A corrupted or partial snapshot file is ignored in favor of the previous valid snapshot + subsequent journal stream. |
 | **Duplicate Client Order (Idempotency)** | Orders submit with unique `clientOrderId`. Duplicate incoming orders are rejected at the risk gate without mutating orderbook state or balance reservations. |
