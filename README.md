@@ -82,24 +82,39 @@ and violated a domain invariant.
 
 **Impact**: The matching and accounting layers no longer depend on floating-point equality.
 
-### 02 — Orderbook Scaling & Benchmark Results
+### 02 — Orderbook Scaling & Algorithmic Complexity
 
-**Problem**: The naive array-based orderbook suffered from $O(N)$ linear scanning during order cancellation and deep book updates. Under heavy resting order volumes, cancellation latency degraded exponentially.
+**Problem**: The naive array-based orderbook suffered from $O(N)$ linear scanning during order cancellation and deep book updates. Under 50,000 resting orders, cancelling an order degraded to tens of seconds due to repeated array splicing and shifting.
+
+**Algorithmic Complexity Nuance**:
+- **Direct Order Lookup**: $O(1)$ via in-memory `orderMap: Map<string, OrderNode>`.
+- **Node Unlinking from Price Level**: $O(1)$ via doubly-linked list pointers (`prev` / `next`) on `PriceLevel`.
+- **Price Level Deletion (Depleted Levels)**: $O(\log M)$ where $M$ is the count of distinct active price levels in the SkipList. In typical trading patterns where price levels retain resting volume, cancellations operate strictly in $O(1)$ time; when the last order at a price is removed, the level is cleanly pruned from the SkipList index in $O(\log M)$ time.
 
 **Benchmark Results**:
 Measured under a controlled 100K-operation differential test suite comparing the naive array implementation against the SkipList + OrderID Map:
 
-| Orderbook Depth | Naive Array Cancellation | SkipList + Map Cancellation | Speedup Factor | Time Complexity |
+| Orderbook Depth | Naive Array Cancellation | SkipList + Map Cancellation | Speedup Factor | Complexity Mode |
 | :--- | :--- | :--- | :--- | :--- |
 | **1,000 resting orders** | 34.32 ms | 0.81 ms | **~42×** | $O(N)$ vs $O(1)$ |
 | **10,000 resting orders** | 768.95 ms | 6.24 ms | **~123×** | $O(N)$ vs $O(1)$ |
 | **50,000 resting orders** | 37,508.10 ms (37.5s) | 29.82 ms | **~1,258×** | $O(N)$ vs $O(1)$ |
 
-**Architecture**:
-```text
-SkipList Price Index (O(log M) price level traversal)
-  └── FIFO Doubly-Linked Price Levels (O(1) enqueue / dequeue)
-  └── OrderID → OrderNode Map (O(1) direct cancellation & lookup)
+**Raw Benchmark Telemetry (Sample from `backend/benchmarks/reports/`)**:
+```json
+{
+  "node": "v20.x / win32-x64",
+  "workload": "cancellation-heavy",
+  "seed": 42,
+  "orders": 10000,
+  "results": {
+    "throughput": "30,466 ops/sec",
+    "p50": "19.4 µs",
+    "p95": "42.6 µs",
+    "p99": "139.7 µs",
+    "max": "17.2 ms"
+  }
+}
 ```
 
 **Differential Validation**: 100,000 randomized operations were executed concurrently through both the naive array and SkipList engines, validating identical orderbook state, fills, and balances at every single step.
@@ -133,6 +148,29 @@ Materialized Account Balances ≡ Ledger Double-Entry Sums ≡ Journal Event Str
 If any divergence is detected down to a single satoshi/cent, the engine refuses startup and halts.
 
 > **Invariant:** Recovery may replay events more than once, but the resulting financial state must remain idempotent and converge to the same ledger-derived balances.
+
+### 04 — Failure Boundaries & Operational Semantics
+
+| Scenario | System Behavior & Guarantee |
+| :--- | :--- |
+| **Simulated `SIGKILL` Termination** | In-flight memory state is lost, but the write-ahead journal (`file-journal.ts`) is flushed synchronously before client ACK. On restart, the engine loads the last hourly snapshot and deterministically replays events starting at `snapshot.lastEventSequenceNumber + 1`. |
+| **PostgreSQL Outage / Settlement Latency** | Matching and journaling continue uninterrupted. The journal retains uncommitted records; when the database reconnects, `syncSettlement()` replays pending trades into PostgreSQL using `ON CONFLICT (id) DO NOTHING` within ACID double-entry balance transactions. |
+| **Crash Mid-Snapshot** | Snapshots are written to `.snapshot.tmp` and atomically renamed only upon full serialization. A corrupted or partial snapshot file is ignored in favor of the previous valid snapshot + subsequent journal stream. |
+| **Duplicate Client Order (Idempotency)** | Orders submit with unique `clientOrderId`. Duplicate incoming orders are rejected at the risk gate without mutating orderbook state or balance reservations. |
+
+---
+
+## 🛠️ Engineering Postmortem: What Broke While Building This
+
+1. **IEEE-754 Precision Drift Under Fractional Fills**:
+   - *Failure*: Matching partial fills using standard JavaScript `number` types resulted in fractional float drift (e.g., `1.9100000000000001 > 1.91`), failing balance invariant assertions.
+   - *Fix*: Replaced floating-point math with strict integer domain value objects: `PriceTicks` (cents/ticks) and `QuantityLots` (base units).
+2. **Memory Leaks from Depleted Price Levels**:
+   - *Failure*: During high-frequency cancel workloads, orders were removed from doubly-linked lists but empty `PriceLevel` nodes lingered in the SkipList, accumulating memory and slowing down $O(\log M)$ traversals.
+   - *Fix*: Added an explicit check in `removeOrder`: when `level.isEmpty()`, immediately prune `priceTicks` from the SkipList index.
+3. **Double-Crediting on Re-entrant Settlement Batches**:
+   - *Failure*: If the settlement worker process died midway through flushing an event batch to PostgreSQL, restarting the worker re-executed balance updates for already-settled trades.
+   - *Fix*: Enforced unique database constraints on `trade_id` and wrapped trade insertion and double-entry balance updates inside serializable transactions (`ON CONFLICT DO NOTHING`).
 
 ### Reproduce Benchmarks & Verification
 
