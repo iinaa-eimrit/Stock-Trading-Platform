@@ -18,7 +18,7 @@
 
 ## Highlights
 - **Measured Cancellation Optimization**: A controlled benchmark reduced cancellation time from 37.5s to 29.8ms at 50K resting orders by replacing linear order scanning with a SkipList price index and an $O(1)$ order-ID lookup map.
-- **Differential & Property Testing**: 100,000 randomized operations verifying identical trades, order states, orderbook snapshots, and quotes between the reference array implementation and SkipList implementation.
+- **Differential & Property Testing**: 100,000 randomized operations replayed through both implementations, comparing trades, order states, orderbook snapshots, and quotes after each operation.
 - **Crash Recovery & Reconciliation**: Write-ahead event journaling with snapshot/replay recovery verified to survive simulated `SIGKILL` termination, settling idempotently into PostgreSQL with automated 3-way balance reconciliation.
 
 ## Why I built this
