@@ -18,7 +18,7 @@
 
 ## Highlights
 - **Measured Cancellation Optimization**: A controlled benchmark reduced cancellation time from 37.5s to 29.8ms at 50K resting orders by replacing linear order scanning with a SkipList price index and an $O(1)$ order-ID lookup map.
-- **Differential & Property Testing**: Differential testing across 100K operations verifying that the SkipList and array implementations produce identical trades, fills, and ledger states under randomized operations.
+- **Differential & Property Testing**: 100,000 randomized operations verifying identical trades, order states, orderbook snapshots, and quotes between the reference array implementation and SkipList implementation.
 - **Crash Recovery & Reconciliation**: Write-ahead event journaling with snapshot/replay recovery verified to survive simulated `SIGKILL` termination, settling idempotently into PostgreSQL with automated 3-way balance reconciliation.
 
 ## Why I built this
@@ -117,7 +117,7 @@ Measured under a controlled 100K-operation differential test suite comparing the
 }
 ```
 
-**Differential Validation**: 100,000 randomized operations were executed concurrently through both the naive array and SkipList engines, validating identical orderbook state, fills, and balances at every single step.
+**Differential Validation**: 100,000 randomized operations were replayed through both implementations with state compared after every operation, validating identical orderbook state, fills, and quote prices.
 
 ### 03 — Failure Recovery & Financial Invariant Verification
 
