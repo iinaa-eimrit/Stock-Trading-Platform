@@ -1,4 +1,4 @@
-# Deterministic Real-Time Exchange Engine
+# Deterministic Real-Time Exchange Simulator
 
 <p align="center">
   A deterministic real-time exchange simulator and matching engine built with TypeScript.
@@ -17,9 +17,9 @@
 </p>
 
 ## Highlights
-- **1,250× Faster Cancellation**: Under a controlled 50K-resting-order cancellation benchmark, the SkipList implementation reduced total cancellation time from 37.5s to 29.8ms.
-- **Provably Green Test Suite**: Comprehensive automated coverage including unit, property-based, differential, integration, and recovery tests verifying the entire matching pipeline, deterministic operations, idempotency, and harsh crash recovery boundaries.
-- **Fail-Safe Integrity**: Survives abrupt process SIGKILLs and PostgreSQL outages without violating financial invariants.
+- **Measured Cancellation Optimization**: A controlled benchmark reduced cancellation time from 37.5s to 29.8ms at 50K resting orders by replacing linear order scanning with a SkipList price index and an $O(1)$ order-ID lookup map.
+- **Differential & Property Testing**: Differential testing across 100K operations verifying that the SkipList and array implementations produce identical trades, fills, and ledger states under randomized operations.
+- **Crash Recovery & Reconciliation**: Write-ahead event journaling with snapshot/replay recovery verified to survive simulated `SIGKILL` termination, settling idempotently into PostgreSQL with automated 3-way balance reconciliation.
 
 ## Why I built this
 I wanted to explore the engineering tradeoffs behind real-time exchange systems: deterministic matching, financial precision, durable event history, transactional settlement, crash recovery, and performance under deep orderbooks.
@@ -33,8 +33,8 @@ For a financial exchange, millisecond latency is critical. We utilize multiplexe
 3. **State Syncing:** Allows the React frontend to maintain an accurate, lightweight local copy of the orderbook that updates incrementally rather than fetching the full state on every tick.
 
 ### State Management & The Matching Engine
-- **In-Memory Orderbook:** The production orderbook uses a SkipList-indexed price structure with FIFO-linked price levels and O(1) order-ID lookup/removal. The original array implementation is retained as a behavioral reference for differential testing and benchmarking.
-- **Trade-offs:** While an in-memory state provides extreme speed, it requires a robust event-sourcing or write-ahead-log (WAL) architecture for fault tolerance. Currently, state persistence is handled periodically to balance durability with latency.
+- **In-Memory Orderbook:** The optimized orderbook uses a SkipList-indexed price structure with FIFO-linked price levels and O(1) order-ID lookup/removal. The original array implementation is retained as a behavioral reference for differential testing and benchmarking.
+- **Trade-offs:** While an in-memory state provides low-latency execution, it requires an event-sourcing or write-ahead-log (WAL) architecture for fault tolerance. Currently, state persistence is handled periodically to balance durability with latency.
 - **Fee Model:** The exchange charges a symmetrical `0.1%` fee to both Makers and Takers for executed trades. The settlement engine is responsible for computing and deducting this `0.1%` fee from the buyer/seller during trade finalization.
 
 ```text
@@ -185,6 +185,8 @@ Additional distributed infrastructure should be introduced only when a measured 
 
 ## Testing & Verification
 
+*Note: The k6 load-testing suite is configured as an informational synthetic benchmark to monitor latency trends under local load, rather than as a claim of production exchange throughput.*
+
 Run the full application correctness suite:
 ```bash
 cd backend
@@ -200,7 +202,7 @@ npm run verify:full
 ## Local Setup
 
 ```bash
-git clone https://github.com/your-username/Stock-Trading-Platform.git
+git clone https://github.com/iinaa-eimrit/Stock-Trading-Platform.git
 cd Stock-Trading-Platform
 
 # Start the PostgreSQL Database and Prometheus Metrics stack
