@@ -84,7 +84,7 @@ and violated a domain invariant.
 
 ### 02 — Orderbook Scaling & Algorithmic Complexity
 
-**Problem**: The naive array-based orderbook suffered from $O(N)$ linear scanning during order cancellation and deep book updates. Under 50,000 resting orders, cancelling an order degraded to tens of seconds due to repeated array splicing and shifting.
+**Problem**: Under deep books, cancellation cost grew linearly with the number of resting orders due to repeated array scanning and element shifting ($O(N)$ complexity). At 50,000 resting orders, cancelling an order degraded to ~37.5 seconds in the reference implementation.
 
 **Algorithmic Complexity Nuance**:
 - **Direct Order Lookup**: $O(1)$ via in-memory `orderMap: Map<string, OrderNode>`.
