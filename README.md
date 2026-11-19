@@ -16,6 +16,21 @@
   <img src="https://img.shields.io/badge/WebSocket-010101?style=for-the-badge&logo=socketdotio&logoColor=white" alt="WebSocket" />
 </p>
 
+## Start here
+
+This portfolio project simulates order matching, account balances, and settlement. It uses synthetic markets and balances; it does not execute real trades.
+
+- [Run locally](#local-setup) for the React trading interface and API.
+- [Testing & verification](#testing--verification) separates engine checks from database integration tests.
+- [Architecture](docs/ARCHITECTURE.md) and [failure modes](docs/FAILURE_MODES.md) explain the implementation.
+
+## Limitations
+
+- A single-process, in-memory matching engine with a local file journal; multi-node failover and distributed consensus are outside the current scope.
+- Recovery depends on retaining the journal and snapshots. Process-crash tests do not establish resilience to disk loss or every storage failure.
+- Benchmarks use synthetic workloads and are sensitive to hardware, book shape, and operation mix. Batch timings should not be interpreted as the latency of one cancellation or as production throughput.
+- The frontend and API are a demonstration of exchange mechanics. Production custody, external exchange connectivity, and operational certification are outside scope.
+
 ## Highlights
 - **Measured Cancellation Optimization**: A controlled benchmark reduced cancellation time from 37.5s to 29.8ms at 50K resting orders by replacing linear order scanning with a SkipList price index and an $O(1)$ order-ID lookup map.
 - **Differential & Property Testing**: 100,000 randomized operations replayed through both implementations, comparing trades, order states, orderbook snapshots, and quotes after each operation.
@@ -84,7 +99,7 @@ and violated a domain invariant.
 
 ### 02 — Orderbook Scaling & Algorithmic Complexity
 
-**Problem**: Under deep books, cancellation cost grew linearly with the number of resting orders due to repeated array scanning and element shifting ($O(N)$ complexity). At 50,000 resting orders, cancelling an order degraded to ~37.5 seconds in the reference implementation.
+**Problem**: Under deep books, cancellation cost grew linearly with the number of resting orders due to repeated array scanning and element shifting ($O(N)$ complexity). At 50,000 resting orders, the reported cancellation workload took ~37.5 seconds in the reference implementation; this is a workload timing, not a per-order latency.
 
 **Algorithmic Complexity Nuance**:
 - **Direct Order Lookup**: $O(1)$ via in-memory `orderMap: Map<string, OrderNode>`.
@@ -225,35 +240,60 @@ Additional distributed infrastructure should be introduced only when a measured 
 
 *Note: The k6 load-testing suite is configured as an informational synthetic benchmark to monitor latency trends under local load, rather than as a claim of production exchange throughput.*
 
-Run the full application correctness suite:
+Run type checking, unit/property tests, the differential stress check, and the backend build (this excludes database integration tests):
 ```bash
 cd backend
 npm run verify
 ```
 
-Run the exhaustive test suite including Hostile Database/Process Crash Recovery:
+Add the recovery and hostile crash harnesses with the following command. Use a disposable local PostgreSQL database for database and crash tests:
 ```bash
 cd backend
 npm run verify:full
 ```
 
+The dedicated API, settlement, and order integration tests are a separate command:
+
+```bash
+# From backend/, with migrations applied to a disposable test database:
+npm run test:integration
+```
+
+See [CI configuration](.github/workflows/ci.yml) for the checks actually run in GitHub Actions. A command listed here is not a claim that it passed on every environment.
+
 ## Local Setup
+
+Use Node.js 22 (matching CI), npm, and Docker with Compose. The Compose stack starts PostgreSQL, applies migrations, starts the backend on port 3001, and starts Prometheus on port 9090.
 
 ```bash
 git clone https://github.com/iinaa-eimrit/Stock-Trading-Platform.git
 cd Stock-Trading-Platform
 
-# Start the PostgreSQL Database and Prometheus Metrics stack
+# Start PostgreSQL, migrations, exchange API, and Prometheus
 docker compose up --build -d
 
-# Start the Exchange Backend
+# Start the frontend in a separate terminal
+cd frontend
+npm ci
+npm run dev
+```
+
+Open [http://localhost:5173](http://localhost:5173). The development proxy forwards `/api` and `/ws` to the backend at `http://localhost:3001`; no frontend environment variable is required for this setup. Check API readiness at [http://localhost:3001/health](http://localhost:3001/health).
+
+For a backend development process with hot reload, start only the database from the repository root:
+
+```bash
+docker compose up -d postgres
 cd backend
-npm install
+npm ci
+export DATABASE_URL=postgres://exchange:password@localhost:5432/exchange
+export PORT=3001
 npm run migrate
 npm run dev
 ```
 
-*Note: The frontend implementation is provided in the `frontend` folder. It can be run independently with `npm start` after configuring environment variables to point to the backend API.*
+These environment commands use a POSIX shell; in PowerShell use `$env:DATABASE_URL="..."` and `$env:PORT="3001"`. Choose either the Compose backend or the development backend to avoid a port conflict. Compose credentials are for local development.
+
 
 ## API
 
